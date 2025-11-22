@@ -2,7 +2,8 @@
 from typing import List, Dict
 import datetime
 # from db.finance_functions import get_daily_profit, get_profit_by_product_delta
-from db.mockDB import get_daily_profit, get_profit_by_product_delta
+# from db.mockDB import get_daily_profit, get_profit_by_product_delta
+from db.finance_functions import get_daily_profit, get_profit_by_product_delta
 
 def compute_trend(series: List[Dict]) -> Dict:
     """
