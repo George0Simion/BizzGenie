@@ -17,7 +17,7 @@ SERVICE_NAME = "orchestrator"
 
 # --- Proxy config ---
 PROXY_BASE_URL = "http://localhost:5000"
-PROXY_ORCHESTRATOR_ROUTE = "/from_orchestrator"   # route you will implement in proxy
+PROXY_ORCHESTRATOR_ROUTE = "/from_orchestrator"
 
 
 
@@ -56,6 +56,8 @@ def send_chatbox_response_to_proxy(text: str):
         requests.post(url, json=payload, timeout=5)
     except Exception as e:
         print(f"[orchestrator] Failed to send chatbox_response to proxy: {e}")
+
+
 
 
 SYSTEM_PROMT_USER = """You are an AI agents manager called Orchestrator. You will receive messages from a small bussiness owner user and commmand the other AI services (legal, predictor , invetory , notification agent)
@@ -212,7 +214,7 @@ def send_message(data):
 def legal_recieve():
     data = request.json
     print("Received legal data:", data)
-    send_chatbox_response_to_proxy(data)
+    send_chatbox_response_to_proxy(data["analysis"])
     return jsonify({"status": "received", "data": data}), 200
 
 
