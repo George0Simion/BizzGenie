@@ -1,0 +1,13 @@
+{
+    "inventory": {
+        "action": "add stock",
+        "details": {
+            "item_id": "rosii",
+            "quantity": 3
+        }
+    },
+    "legal": {
+        "subject": "Regulations regarding storage and freshness requirements for fresh vegetables like tomatoes in a restaurant setting"
+    },
+    "immediate_response": "Am adăugat 3 kilograme de roșii în inventar. Verific legalitatea stocării și cerințele pentru prospețimea legumelor în restaurant."
+}
