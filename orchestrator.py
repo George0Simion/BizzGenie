@@ -4,12 +4,13 @@ from threading import Thread
 from comms import send_json_to_service, SERVICE_URLS
 import time
 from ai_wrapper import generate_reply
-
+from flask_cors import CORS 
 import json
 
 
 app = Flask(__name__)
 
+LANGUAGE = "ROMANIAN"
 previous_answererd = True
 
 
@@ -58,7 +59,7 @@ to get their input.
     }
 
 """
-
+SYSTEM_PROMT_USER = SYSTEM_PROMT_USER + f"all responses must be in {LANGUAGE} language."
 
 SYSTEM_PROMT_INTERNAL = ""
 
@@ -114,13 +115,12 @@ def parse_main_request_data(text: str):
 
     if "inventory" in response:
         inv = response["inventory"]
-        send_json_to_service("inventory", inv)
+        send_json_to_service("inventory", "/receive" , inv)
 
 
     if "legal" in response:
         leg = response["legal"]
-        print("legal command:", leg)
-        # TODO: send to legal agent here
+        send_json_to_service("legal", "/input", response)
 
     if "immediate_response" in response:
         print("orchestrator immediate response:", response["immediate_response"])
@@ -131,10 +131,6 @@ def parse_main_request_data(text: str):
     USER_RESPONSE_STACK.clear()
 
     return response
-
-
-
-
 
 
 
@@ -151,6 +147,24 @@ def handle_text():
     return jsonify({"message": "Send a POST request with JSON data."}), 200
 
 
+
+
+def send_message(data):
+    send_json_to_service("frontend", "/send_message", data)
+
+    
+
+
+
+@app.route("/legal_recieve", methods=["POST"])
+def legal_recieve():
+    data = request.json
+    print("Received legal data:", data)
+
+    return jsonify({"status": "received", "data": data}), 200
+
+
+
 @app.route("/receive_inventory", methods=["GET"])
 def receive_inventory():
     # receive inventory data from inventory service
@@ -162,16 +176,10 @@ def receive_inventory():
 
 
 
-
-
-
-
-
-
 if __name__ == "__main__":
 
     app.run(port=5001, debug=True)
-    
+
 
     
     
