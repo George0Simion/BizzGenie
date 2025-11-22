@@ -114,8 +114,8 @@ def parse_main_request_data(text: str):
 
     if "inventory" in response:
         inv = response["inventory"]
-        print("inventory command:", inv)
-        # TODO: send to inventory agent here
+        send_json_to_service("inventory", inv)
+
 
     if "legal" in response:
         leg = response["legal"]
@@ -131,30 +131,6 @@ def parse_main_request_data(text: str):
     USER_RESPONSE_STACK.clear()
 
     return response
-
-        
-        
-        
-    
-    
-
-
-    
-    
-    # print("response from AI:", response)
-    # with open("last_orchestrator_response.json", "w") as f:
-    #     f.write(response)
-    # return response    
-    
-
-
-
-
-# @app.route("inventory_allert", methods=["POST"])
-# def handle_inventory_allert():
-#     data = request.json
-#     print("Received inventory allert:", data)
-#     return jsonify({"status": "received"}), 200
 
 
 
@@ -173,6 +149,22 @@ def handle_text():
 
         return jsonify({"received": data}), 200
     return jsonify({"message": "Send a POST request with JSON data."}), 200
+
+
+@app.route("/receive_inventory", methods=["GET"])
+def receive_inventory():
+    # receive inventory data from inventory service
+    data = request.json
+    print("Received inventory data:", data)
+
+    return jsonify({"status": "received", "data": data}), 200
+
+
+
+
+
+
+
 
 
 
