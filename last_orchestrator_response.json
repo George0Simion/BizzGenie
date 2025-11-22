@@ -1,3 +1,14 @@
 {
-    "immediate_response": "Cât de multe roșii ați cumpărat și doriți să le adăugați în stocul restaurantului? Vă rog să-mi spuneți cantitatea pentru a actualiza inventarul."
+    "inventory": {
+        "action": "add stock",
+        "details": {
+            "item_id": "rosii",
+            "quantity": 3,
+            "quantity_unit": "kg"
+        }
+    },
+    "legal": {
+        "subject": "food safety and storage regulations for fresh tomatoes"
+    },
+    "immediate_response": "Am înregistrat achiziția de 3 kg de roșii în inventar. De asemenea, voi verifica reglementările legale privind siguranța alimentară și depozitarea roșiilor pentru a vă asigura că respectați normele."
 }

@@ -4,7 +4,13 @@ from threading import Thread
 from comms import send_json_to_service, SERVICE_URLS
 import time
 from ai_wrapper import generate_reply
+
+import json
+
+
 app = Flask(__name__)
+
+previous_answererd = True
 
 
 USER_RESPONSE_STACK = []
@@ -58,33 +64,73 @@ SYSTEM_PROMT_INTERNAL = ""
 
 
 
+USER_RESPONSE_STACK = []  # make sure this exists
+SERVICE_NAME = "orchestrator"
 
 
 
-def parse_main_request_data(text):
-    response = generate_reply(
+def list_to_string(lst, sep="\n"):
+    return sep.join(str(x) for x in lst)
+
+
+def parse_main_request_data(text: str):
+    global USER_RESPONSE_STACK
+
+    # Build history string
+    previous_messages = list_to_string(USER_RESPONSE_STACK)
+    print("previous messages:", previous_messages)
+
+    # Add current user message to stack
+    USER_RESPONSE_STACK.append(text)
+
+    # Build user prompt
+    user_prompt = previous_messages + "\nUSER: " + text if previous_messages else text
+
+    # Call the model
+    raw_response = generate_reply(
         SYSTEM_PROMT_USER,
-        USER_RESPONSE_STACK + [text]
+        user_prompt
     )
-    
+    print("orchestrator raw response:", raw_response)
+
+    # Parse JSON
+    try:
+        response = json.loads(raw_response)
+    except json.JSONDecodeError:
+        print("WARNING: Orchestrator returned non-JSON. Using raw text as immediate_response.")
+        response = {"immediate_response": raw_response}
+
+    print("orchestrator parsed response:", response)
+
+    # CASE 1: MODEL ASKS A QUESTION → keep context, do NOT clear stack
     if "question" in response:
-        USER_RESPONSE_STACK.append(text)
-        parse_main_request_data("The user says: " + response["question"])
-        
-        
-    # if the user request is not clear ask for more information
-    
-    
-    
+        question = response["question"]
+        USER_RESPONSE_STACK.append(question)
+        print("orchestrator question to user:", question)
+        return response
+
+    # CASE 2: NO QUESTION → this is a final answer with actions
+    # Dispatch work to services here, then clear context.
+
+    if "inventory" in response:
+        inv = response["inventory"]
+        send_json_to_service("inventory", inv)
 
 
-    
-    
-    print("response from AI:", response)
-    with open("last_orchestrator_response.json", "w") as f:
-        f.write(response)
-    return response    
-    
+    if "legal" in response:
+        leg = response["legal"]
+        print("legal command:", leg)
+        # TODO: send to legal agent here
+
+    if "immediate_response" in response:
+        print("orchestrator immediate response:", response["immediate_response"])
+        # TODO: send this back to the user
+
+    # Now that everything is resolved for this “thread”, clear context
+    print("Conversation for this request resolved, clearing USER_RESPONSE_STACK")
+    USER_RESPONSE_STACK.clear()
+
+    return response
 
 
 
@@ -96,10 +142,29 @@ def parse_main_request_data(text):
 def handle_text():
     if request.method == "POST":
         data = request.json
-        parse_main_request_data("Am cumparat rosii")
+        print("Received data:", data)
+        message = data.get("msg", "")
+        print("Processing message:", message) 
+        parse_main_request_data(message)
 
         return jsonify({"received": data}), 200
     return jsonify({"message": "Send a POST request with JSON data."}), 200
+
+
+@app.route("/receive_inventory", methods=["GET"])
+def receive_inventory():
+    # receive inventory data from inventory service
+    data = request.json
+    print("Received inventory data:", data)
+
+    return jsonify({"status": "received", "data": data}), 200
+
+
+
+
+
+
+
 
 
 
