@@ -1,9 +1,15 @@
 import sqlite3
 import datetime
+import os
 
 DB_PATH = 'db/inventory.db'
 
 def init_db():
+    # Ensure the directory exists (e.g., 'db/')
+    db_dir = os.path.dirname(DB_PATH)
+    if db_dir and not os.path.exists(db_dir):
+        os.makedirs(db_dir)
+
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     # Added: category, auto_buy (boolean)

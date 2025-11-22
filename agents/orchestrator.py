@@ -1,6 +1,7 @@
 import sys
 import os
 import json
+import requests
 from flask import Flask, request, jsonify
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -8,8 +9,6 @@ from utils.ai_wrapper import generate_reply
 from utils.comms import send_json_to_service
 
 app = Flask(__name__)
-
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 SYSTEM_PROMPT = """
 You are the Orchestrator. 
@@ -27,6 +26,20 @@ Format:
     "immediate_response": "I have started the process..."
 }
 """
+
+# --- NEW PROXY ROUTE FOR DASHBOARD ---
+@app.route("/get-inventory", methods=["GET"])
+def proxy_inventory():
+    """
+    Frontend calls this -> Orchestrator calls Inventory Agent -> Returns JSON
+    """
+    try:
+        # Direct call to Inventory Agent on Port 5002
+        response = requests.get("[http://127.0.0.1:5002/inventory](http://127.0.0.1:5002/inventory)")
+        return jsonify(response.json())
+    except Exception as e:
+        return jsonify({"error": "Failed to reach Inventory Agent", "details": str(e)}), 500
+
 
 @app.route("/message", methods=["POST"])
 def handle_message():
@@ -49,9 +62,7 @@ def handle_message():
 
     # 2. Execute Inventory Call if needed
     if plan.get("inventory", {}).get("should_call"):
-        # Inventory Agent expects {"message": "..."}
         inv_payload = {"message": plan["inventory"]["instruction"]}
-        # Note the path matches what is inside inventory_agent.py
         inv_resp = send_json_to_service("inventory", "/inventory/message", inv_payload)
         results["inventory"] = inv_resp
 

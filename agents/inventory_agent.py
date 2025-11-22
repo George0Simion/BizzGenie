@@ -12,8 +12,7 @@ from db.inventory_functions import init_db, add_product, consume_product, get_al
 app = Flask(__name__)
 
 # 🔑 CONFIGURATION
-# HARDCODE YOUR KEY HERE FOR TESTING
-OPENROUTER_API_KEY = "sk-or-v1-..." 
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") 
 
 def query_llm(user_text):
     current_date = datetime.now().strftime("%Y-%m-%d")
@@ -37,7 +36,7 @@ def query_llm(user_text):
     """
 
     headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
         "Content-Type": "application/json",
         "HTTP-Referer": "http://localhost:5002"
     }
@@ -74,12 +73,15 @@ def get_inventory():
     Returns the full inventory state as JSON.
     Useful for the frontend dashboard.
     """
-    data = get_all_inventory()
-    return jsonify({
-        "status": "success",
-        "count": len(data),
-        "inventory": data
-    })
+    try:
+        data = get_all_inventory()
+        return jsonify({
+            "status": "success",
+            "count": len(data),
+            "inventory": data
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/inventory/message', methods=['POST'])
 def handle_message():
@@ -122,7 +124,7 @@ def handle_message():
 
     alerts = get_alerts()
     
-    response_text = f"✅ {'; '.join(logs)}."
+    response_text = f"  {'; '.join(logs)}."
     
     if alerts['restock_needed']:
         response_text += f"\n🛒 AUTO-BUY NEEDED: {', '.join(alerts['restock_needed'])}"

@@ -1,33 +1,33 @@
 import requests
-import time
+import json
 
-# Target the Orchestrator
-URL = "http://127.0.0.1:5001/message"
+# URL for Orchestrator
+BASE_URL = "http://127.0.0.1:5001"
 
-def test_orchestrator():
-    print("🚀 Sending message to Orchestrator...")
-    
-    payload = {
-        "message": "I just bought 5kg of cherries for the restaurant."
-    }
+def test_full_flow():
+    print("🚀 1. Sending 'Add' message to Orchestrator...")
+    msg_payload = {"message": "I bought 10kg of potatoes and 5 liters of milk"}
     
     try:
-        response = requests.post(URL, json=payload)
-        print("\n✅ SYSTEM RESPONSE STATUS:", response.status_code)
-        
-        data = response.json()
-        
-        print("\n📋 ORCHESTRATOR PLAN:")
-        print(data.get("orchestrator_plan"))
-        
-        print("\n🍅 INVENTORY AGENT SAID:")
-        print(data.get("agent_results", {}).get("inventory", {}).get("response_text"))
-        
-        print("\n⚖️ LEGAL AGENT SAID:")
-        print(data.get("agent_results", {}).get("legal"))
-
+        resp = requests.post(f"{BASE_URL}/message", json=msg_payload)
+        print("  Orchestrator Reply:", resp.status_code)
+        # print(json.dumps(resp.json(), indent=2))
     except Exception as e:
-        print("❌ Connection Failed. Are all 3 terminals running?", e)
+        print("  Failed:", e)
+        return
+
+    print("\n🚀 2. Fetching Full Inventory via Orchestrator...")
+    try:
+        resp = requests.get(f"{BASE_URL}/get-inventory")
+        data = resp.json()
+        
+        print(f"📦 Total Items in Stock: {data.get('count', 0)}")
+        print("📋 Inventory List:")
+        for item in data.get("inventory", []):
+            print(f"   - {item['product_name']}: {item['quantity']}{item['unit']} (Exp: {item['expiration_date']}) [{item['category']}]")
+            
+    except Exception as e:
+        print("  Failed to fetch inventory:", e)
 
 if __name__ == "__main__":
-    test_orchestrator()
+    test_full_flow()
