@@ -6,8 +6,14 @@ import time
 from ai_wrapper import generate_reply
 app = Flask(__name__)
 
+
+USER_RESPONSE_STACK = []
+
+
+
+
 SERVICE_NAME = "orchestrator"
-SYSTEM_PROMT = """You are an AI agents manager called Orchestrator. You will receive messages from a small bussiness owner user and commmand the other AI services (legal, predictor , invetory , notification agent)
+SYSTEM_PROMT_USER = """You are an AI agents manager called Orchestrator. You will receive messages from a small bussiness owner user and commmand the other AI services (legal, predictor , invetory , notification agent)
 to get their input.
 
     The user is running a small restaurant business.    
@@ -23,13 +29,15 @@ to get their input.
         The user will send simple messages you must interpret them and expand on the request to command the agents.
         The user might not think of all implications so you must think of what agents to command to fulfill the user request.
     
-    You must format the response as a JSON object with the following structure:
+    You must format the response as a JSON object with one of the following structures:
+    1. If you know what actions to take, and it is clear what to do, respond with:
     {
         "inventory": {
             "action": "add stock" / "remove stock"",
             "details": {
-                "item_id": "string",
-                "quantity": integer,
+                "item_id": "this will be a string identifying the item's name",
+                "quantity": "integer representing how many items to add or remove",
+                "quantity_unit": "string representing the unit of measurement (e.g., 'pieces', 'kg', 'liters')"
             }
         },
         "legal": {
@@ -37,11 +45,16 @@ to get their input.
 
         "immediate_response": "string with a message acknowledging the user request and summarizing the actions taken"
     }
+    
+    2. If you need more information from the user to decide what actions to take, respond with:
+    {
+        "question": "string with a message asking the user for more information"
+    }
 
 """
 
 
-
+SYSTEM_PROMT_INTERNAL = ""
 
 
 
@@ -50,9 +63,23 @@ to get their input.
 
 def parse_main_request_data(text):
     response = generate_reply(
-        SYSTEM_PROMT,
-        text
+        SYSTEM_PROMT_USER,
+        USER_RESPONSE_STACK + [text]
     )
+    
+    if "question" in response:
+        USER_RESPONSE_STACK.append(text)
+        parse_main_request_data("The user says: " + response["question"])
+        
+        
+    # if the user request is not clear ask for more information
+    
+    
+    
+
+
+    
+    
     print("response from AI:", response)
     with open("last_orchestrator_response.json", "w") as f:
         f.write(response)
@@ -69,7 +96,7 @@ def parse_main_request_data(text):
 def handle_text():
     if request.method == "POST":
         data = request.json
-        parse_main_request_data("Am cumparat 3 kilograme de rosii")
+        parse_main_request_data("Am cumparat rosii")
 
         return jsonify({"received": data}), 200
     return jsonify({"message": "Send a POST request with JSON data."}), 200
