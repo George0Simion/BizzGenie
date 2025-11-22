@@ -6,6 +6,8 @@ SERVICE_URLS = {
     "orchestrator": "http://127.0.0.1:5001",
     "legal": "http://127.0.0.1:5002",
     "predictor": "http://127.0.0.1:5003",
+    "financial": "http://127.0.0.1:5004",
+    "frontend": "http://127.0.0.1:5005",
 }
 
 
