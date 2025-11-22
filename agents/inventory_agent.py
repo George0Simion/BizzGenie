@@ -10,8 +10,6 @@ from db.inventory_functions import init_db, add_product, consume_product, get_al
 
 app = Flask(__name__)
 
-# 🔑 CONFIGURATION
-OPENROUTER_API_KEY = ""
 site_url = "http://localhost:5000"
 app_name = "InventoryAgent"
 
@@ -44,7 +42,7 @@ def query_llm(user_text):
     """
 
     headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
         "Content-Type": "application/json"
     }
     
@@ -107,13 +105,13 @@ def handle_message():
     
     # Append critical alerts to the response
     if alerts['expired']:
-        response_text += f"\n⚠️ DISCARD: {', '.join(alerts['expired'])}"
+        response_text += f"\n DISCARD: {', '.join(alerts['expired'])}"
     
     if alerts['restock_needed']:
-        response_text += f"\n🛒 BUY LIST: {', '.join(alerts['restock_needed'])}"
+        response_text += f"\n BUY LIST: {', '.join(alerts['restock_needed'])}"
     
     if alerts['expiring_soon']:
-        response_text += f"\n⏳ USE SOON: {', '.join(alerts['expiring_soon'])}"
+        response_text += f"\n USE SOON: {', '.join(alerts['expiring_soon'])}"
 
     # Return JSON to Orchestrator
     return jsonify({
@@ -124,5 +122,5 @@ def handle_message():
     })
 
 if __name__ == '__main__':
-    print("🍅 Inventory Agent running on port 5002")
+    print("Inventory Agent running on port 5002")
     app.run(port=5002, debug=True)
