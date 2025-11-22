@@ -21,7 +21,6 @@ def generate_reply(
     if not OPENAI_API_KEY:
         raise RuntimeError(
             "OPENAI_API_KEY not set or empty. "
-            "Export it before running: export OPENAI_API_KEY='sk-or-v1-...'"
         )
 
     # DEBUG: show that we have a key and model
