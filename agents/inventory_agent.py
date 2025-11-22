@@ -2,62 +2,64 @@ import os
 import json
 import requests
 from flask import Flask, request, jsonify
-from datetime import datetime
-# Import DB functions from the file above
+from datetime import datetime, timedelta
 import sys
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from db.inventory_functions import init_db, add_product, consume_product, get_alerts
 
 app = Flask(__name__)
 
 # 🔑 CONFIGURATION
-OPENROUTER_API_KEY = "openrouter - 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"
-site_url = "http://localhost:5000"
-app_name = "InventoryAgent"
-
-# Initialize DB on startup
-init_db()
+# init_db() # Run this once to create the file, then comment out if you want
 
 def query_llm(user_text):
-    """
-    Uses LLM to parse natural language into Structured JSON for the DB.
-    """
     current_date = datetime.now().strftime("%Y-%m-%d")
     
+    # 🧠 SMART PROMPT
     prompt = f"""
-    You are an Inventory Manager API.
-    Today's date is: {current_date}.
-    
-    User input: "{user_text}"
-    
-    Extract the following information and return ONLY valid JSON (no markdown):
-    1. action: "add" or "consume" or "query"
-    2. items: a list of objects {{ "name": "string", "quantity": number, "unit": "kg/pcs/l", "expiration_date": "YYYY-MM-DD" (only for add, default to today + 7 days if missing) }}
-    
-    Example JSON output:
+    You are an Intelligent Inventory System. Today is {current_date}.
+    User Input: "{user_text}"
+
+    Tasks:
+    1. Identify intent: "add" or "consume".
+    2. NORMALIZE NAMES: Convert variations like "ciresi", "ciresica" to standard singular "cirese". "Tomatoes" -> "tomato".
+    3. CATEGORIZE: Assign a category (e.g., Dairy, Fruit, Vegetable, Meat, Pantry).
+    4. AUTO-BUY: Should this be automatically restocked? (True for essentials like milk/bread, False for treats).
+    5. EXPIRATION: If user does NOT specify a date, estimate a HARDCODED shelf life in DAYS from today based on the item type (e.g., Milk=7, Rice=365).
+
+    Return JSON ONLY:
     {{
-      "action": "add",
+      "action": "add" | "consume",
       "items": [
-        {{ "name": "tomatoes", "quantity": 5, "unit": "kg", "expiration_date": "2024-12-01" }}
+        {{
+          "normalized_name": "string (lowercase)",
+          "original_name": "string",
+          "quantity": number,
+          "unit": "kg/pcs/l",
+          "category": "string",
+          "auto_buy": boolean,
+          "estimated_shelf_life_days": number (integer),
+          "user_specified_date": "YYYY-MM-DD" (or null if not mentioned)
+        }}
       ]
     }}
     """
 
     headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Authorization": f"Bearer {OPEN_API_KEY}",
         "Content-Type": "application/json"
     }
     
     data = {
-        "model": "openai/gpt-3.5-turbo", # Or any model available on OpenRouter
+        "model": "openai/gpt-4o-mini", # Or any robust model
         "messages": [{"role": "user", "content": prompt}]
     }
 
     try:
         response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data)
-        response_json = response.json()
-        content = response_json['choices'][0]['message']['content']
-        # Clean up potential markdown code blocks
+        content = response.json()['choices'][0]['message']['content']
+        # Clean markdown
         if "```json" in content:
             content = content.split("```json")[1].split("```")[0]
         return json.loads(content.strip())
@@ -67,62 +69,56 @@ def query_llm(user_text):
 
 @app.route('/inventory/message', methods=['POST'])
 def handle_message():
-    """
-    Endpoint called by the Orchestrator.
-    Input JSON expected: { "message": "I bought 10 eggs expiring next friday" }
-    """
     data = request.json
     user_message = data.get('message', '')
 
-    # 1. AI Processing -> Parse Intent
     parsed_data = query_llm(user_message)
     
     if not parsed_data:
-        return jsonify({"error": "Failed to parse message"}), 500
+        return jsonify({"error": "Failed to parse"}), 500
 
     action = parsed_data.get('action')
     items = parsed_data.get('items', [])
-    execution_logs = []
+    logs = []
 
-    # 2. Database Execution
     for item in items:
-        name = item['name'].lower()
+        # Use the Normalized Name for DB consistency
+        name = item['normalized_name']
         qty = float(item['quantity'])
         unit = item.get('unit', 'pcs')
         
         if action == "add":
-            expiry = item.get('expiration_date')
-            result = add_product(name, qty, unit, expiry)
-            execution_logs.append(result)
+            category = item.get('category', 'general')
+            auto_buy = 1 if item.get('auto_buy') else 0
+            
+            # Date Logic: User specified OR Calculated Hardcoded
+            if item.get('user_specified_date'):
+                expiry = item['user_specified_date']
+            else:
+                # Calculate expiry based on LLM's shelf life estimate
+                days_to_add = item.get('estimated_shelf_life_days', 7)
+                expiry = (datetime.now() + timedelta(days=days_to_add)).strftime("%Y-%m-%d")
+
+            result = add_product(name, category, qty, unit, expiry, auto_buy)
+            logs.append(result)
             
         elif action == "consume":
             result = consume_product(name, qty)
-            execution_logs.append(result)
+            logs.append(result)
 
-    # 3. Intelligent Checks (Decision Making)
-    # After the action, we check the health of the inventory
     alerts = get_alerts()
     
-    response_text = f"Action Processed: {'; '.join(execution_logs)}."
-    
-    # Append critical alerts to the response
-    if alerts['expired']:
-        response_text += f"\n⚠️ DISCARD: {', '.join(alerts['expired'])}"
+    response_text = f"✅ {'; '.join(logs)}."
     
     if alerts['restock_needed']:
-        response_text += f"\n🛒 BUY LIST: {', '.join(alerts['restock_needed'])}"
+        response_text += f"\n🛒 AUTO-BUY NEEDED: {', '.join(alerts['restock_needed'])}"
     
-    if alerts['expiring_soon']:
-        response_text += f"\n⏳ USE SOON: {', '.join(alerts['expiring_soon'])}"
-
-    # Return JSON to Orchestrator
     return jsonify({
         "agent": "Inventory",
         "processed_data": parsed_data,
         "response_text": response_text,
-        "alerts_payload": alerts # Automation agent can use this raw data
+        "alerts": alerts
     })
 
 if __name__ == '__main__':
-    print("🍅 Inventory Agent running on port 5002")
     app.run(port=5002, debug=True)

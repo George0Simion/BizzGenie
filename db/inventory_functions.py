@@ -6,38 +6,48 @@ DB_PATH = 'db/inventory.db'
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    # Create table with: name, quantity, unit (kg/pcs), expiration_date, threshold (for auto-buy)
+    # Added: category, auto_buy (boolean)
     c.execute('''
         CREATE TABLE IF NOT EXISTS inventory (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             product_name TEXT NOT NULL,
+            category TEXT DEFAULT 'general',
             quantity REAL DEFAULT 0,
             unit TEXT DEFAULT 'pcs',
             expiration_date DATE,
+            auto_buy BOOLEAN DEFAULT 0,
             min_threshold REAL DEFAULT 2
         )
     ''')
     conn.commit()
     conn.close()
 
-def add_product(name, qty, unit, expiry):
+def add_product(name, category, qty, unit, expiry, auto_buy):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     
-    # Check if product with same expiry exists to update, else insert new
+    # 1. Check if this specific batch (Name + Expiry) exists
     c.execute("SELECT id, quantity FROM inventory WHERE product_name = ? AND expiration_date = ?", (name, expiry))
     row = c.fetchone()
     
     if row:
+        # Update existing batch
         new_qty = row[1] + qty
-        c.execute("UPDATE inventory SET quantity = ? WHERE id = ?", (new_qty, row[0]))
+        # We also update category/auto_buy just in case they changed preferences
+        c.execute("UPDATE inventory SET quantity = ?, category = ?, auto_buy = ? WHERE id = ?", 
+                  (new_qty, category, auto_buy, row[0]))
+        action = "Updated existing batch"
     else:
-        c.execute("INSERT INTO inventory (product_name, quantity, unit, expiration_date) VALUES (?, ?, ?, ?)",
-                  (name, qty, unit, expiry))
+        # Insert new batch
+        c.execute("""
+            INSERT INTO inventory (product_name, category, quantity, unit, expiration_date, auto_buy) 
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (name, category, qty, unit, expiry, auto_buy))
+        action = "Created new batch"
     
     conn.commit()
     conn.close()
-    return f"Added {qty}{unit} of {name} (Exp: {expiry})."
+    return f"{action}: {qty}{unit} of '{name}' (Category: {category}, Exp: {expiry})"
 
 def consume_product(name, qty):
     conn = sqlite3.connect(DB_PATH)
@@ -48,7 +58,8 @@ def consume_product(name, qty):
     rows = c.fetchall()
     
     if not rows:
-        return f"Error: {name} not found in stock."
+        conn.close()
+        return f"Error: '{name}' not found in stock."
     
     remaining_to_consume = qty
     consumed_details = []
@@ -61,27 +72,21 @@ def consume_product(name, qty):
         if current_qty >= remaining_to_consume:
             new_qty = current_qty - remaining_to_consume
             c.execute("UPDATE inventory SET quantity = ? WHERE id = ?", (new_qty, row_id))
-            consumed_details.append(f"{remaining_to_consume}{unit} from batch {expiry}")
+            consumed_details.append(f"{remaining_to_consume}{unit} (batch {expiry})")
             remaining_to_consume = 0
         else:
-            # Consume this whole batch and move to next
             remaining_to_consume -= current_qty
             c.execute("UPDATE inventory SET quantity = 0 WHERE id = ?", (row_id,))
-            consumed_details.append(f"{current_qty}{unit} from batch {expiry}")
+            consumed_details.append(f"{current_qty}{unit} (batch {expiry})")
 
     conn.commit()
     conn.close()
     
     if remaining_to_consume > 0:
-        return f"Consumed available stock. Still needed {remaining_to_consume} more."
+        return f"Consumed available stock of {name}. Still need {remaining_to_consume} more."
     return f"Consumed {name}: " + ", ".join(consumed_details)
 
 def get_alerts():
-    """
-    Checks for:
-    1. Items expired or expiring in 3 days.
-    2. Items below threshold (need buying).
-    """
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     
@@ -94,31 +99,34 @@ def get_alerts():
         "restock_needed": []
     }
     
-    # Check Expirations
-    c.execute("SELECT product_name, quantity, unit, expiration_date FROM inventory WHERE quantity > 0")
+    # Get all inventory
+    c.execute("SELECT product_name, quantity, unit, expiration_date, min_threshold, auto_buy FROM inventory WHERE quantity > 0")
     rows = c.fetchall()
     
-    # Aggregate quantities for restock check
-    total_stock = {}
+    total_stock = {} # To aggregate batches (e.g. 2 milks expiring today, 3 expiring tomorrow = 5 total)
+    product_meta = {} # Store metadata like auto_buy status
 
-    for name, qty, unit, expiry_str in rows:
+    for name, qty, unit, expiry_str, threshold, auto_buy in rows:
         expiry = datetime.datetime.strptime(expiry_str, "%Y-%m-%d").date()
         
         # Expiration Logic
         if expiry < today:
-            alerts["expired"].append(f"{name}: {qty}{unit} (Expired on {expiry_str})")
+            alerts["expired"].append(f"{name}: {qty}{unit} (Expired {expiry_str})")
         elif expiry <= warning_date:
             alerts["expiring_soon"].append(f"{name}: {qty}{unit} (Expires {expiry_str})")
             
-        # Sum for restocking
+        # Aggregation for Restock Logic
         if name not in total_stock:
             total_stock[name] = 0
+            product_meta[name] = {"threshold": threshold, "auto_buy": auto_buy}
         total_stock[name] += qty
 
-    # Check Restock (Hardcoded threshold of 5 for demo, or fetch from DB)
+    # Restock Logic (Only if auto_buy is True OR stock is very low)
     for name, total_qty in total_stock.items():
-        if total_qty < 2: # Simple threshold
-            alerts["restock_needed"].append(f"Buy {name}! Only {total_qty} left.")
+        meta = product_meta[name]
+        # Only trigger restock alert if Auto-Buy is ON and we are below threshold
+        if meta["auto_buy"] and total_qty < meta["threshold"]:
+            alerts["restock_needed"].append(f"Auto-Buy Alert: {name} (Stock: {total_qty}, Threshold: {meta['threshold']})")
 
     conn.close()
     return alerts
