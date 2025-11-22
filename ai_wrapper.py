@@ -8,7 +8,7 @@ DEFAULT_TEMPERATURE = 0.7
 DEFAULT_MAX_TOKENS = 256
 
 # Read env var once at import
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 
 def generate_reply(
@@ -18,18 +18,17 @@ def generate_reply(
     temperature: float = DEFAULT_TEMPERATURE,
     max_tokens: int = DEFAULT_MAX_TOKENS,
 ):
-    if not OPENROUTER_API_KEY:
+    if not OPENAI_API_KEY:
         raise RuntimeError(
-            "OPENROUTER_API_KEY not set or empty. "
-            "Export it before running: export OPENROUTER_API_KEY='sk-or-v1-...'"
+            "OPENAI_API_KEY not set or empty. "
         )
 
     # DEBUG: show that we have a key and model
     print("[DEBUG] Using model:", model)
-    print("[DEBUG] OPENROUTER_API_KEY starts with:", OPENROUTER_API_KEY[:10])
+    print("[DEBUG] OPENAI_API_KEY starts with:", OPENAI_API_KEY[:10])
 
     headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
         "Content-Type": "application/json",
         # Optional:
         "HTTP-Referer": "http://localhost",
