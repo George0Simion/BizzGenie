@@ -99,34 +99,56 @@ def get_alerts():
         "restock_needed": []
     }
     
-    # Get all inventory
     c.execute("SELECT product_name, quantity, unit, expiration_date, min_threshold, auto_buy FROM inventory WHERE quantity > 0")
     rows = c.fetchall()
     
-    total_stock = {} # To aggregate batches (e.g. 2 milks expiring today, 3 expiring tomorrow = 5 total)
-    product_meta = {} # Store metadata like auto_buy status
+    total_stock = {} 
+    product_meta = {}
 
     for name, qty, unit, expiry_str, threshold, auto_buy in rows:
         expiry = datetime.datetime.strptime(expiry_str, "%Y-%m-%d").date()
         
-        # Expiration Logic
         if expiry < today:
             alerts["expired"].append(f"{name}: {qty}{unit} (Expired {expiry_str})")
         elif expiry <= warning_date:
             alerts["expiring_soon"].append(f"{name}: {qty}{unit} (Expires {expiry_str})")
             
-        # Aggregation for Restock Logic
         if name not in total_stock:
             total_stock[name] = 0
             product_meta[name] = {"threshold": threshold, "auto_buy": auto_buy}
         total_stock[name] += qty
 
-    # Restock Logic (Only if auto_buy is True OR stock is very low)
     for name, total_qty in total_stock.items():
         meta = product_meta[name]
-        # Only trigger restock alert if Auto-Buy is ON and we are below threshold
         if meta["auto_buy"] and total_qty < meta["threshold"]:
             alerts["restock_needed"].append(f"Auto-Buy Alert: {name} (Stock: {total_qty}, Threshold: {meta['threshold']})")
 
     conn.close()
     return alerts
+
+def get_all_inventory():
+    """
+    Returns the full inventory list as a list of dictionaries for JSON API.
+    """
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row  # This allows us to access columns by name
+    c = conn.cursor()
+    
+    c.execute("SELECT * FROM inventory WHERE quantity > 0 ORDER BY category, product_name")
+    rows = c.fetchall()
+    
+    inventory_list = []
+    for row in rows:
+        inventory_list.append({
+            "id": row["id"],
+            "product_name": row["product_name"],
+            "category": row["category"],
+            "quantity": row["quantity"],
+            "unit": row["unit"],
+            "expiration_date": row["expiration_date"],
+            "auto_buy": bool(row["auto_buy"]),
+            "min_threshold": row["min_threshold"]
+        })
+    
+    conn.close()
+    return inventory_list

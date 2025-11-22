@@ -5,67 +5,81 @@ from flask import Flask, request, jsonify
 from datetime import datetime, timedelta
 import sys
 
+# Ensure we can find the db folder
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from db.inventory_functions import init_db, add_product, consume_product, get_alerts
+from db.inventory_functions import init_db, add_product, consume_product, get_alerts, get_all_inventory
 
 app = Flask(__name__)
 
 # 🔑 CONFIGURATION
-# init_db() # Run this once to create the file, then comment out if you want
+# HARDCODE YOUR KEY HERE FOR TESTING
+OPENROUTER_API_KEY = "sk-or-v1-..." 
 
 def query_llm(user_text):
     current_date = datetime.now().strftime("%Y-%m-%d")
     
-    # 🧠 SMART PROMPT
     prompt = f"""
     You are an Intelligent Inventory System. Today is {current_date}.
     User Input: "{user_text}"
-
+    
     Tasks:
     1. Identify intent: "add" or "consume".
-    2. NORMALIZE NAMES: Convert variations like "ciresi", "ciresica" to standard singular "cirese". "Tomatoes" -> "tomato".
-    3. CATEGORIZE: Assign a category (e.g., Dairy, Fruit, Vegetable, Meat, Pantry).
-    4. AUTO-BUY: Should this be automatically restocked? (True for essentials like milk/bread, False for treats).
-    5. EXPIRATION: If user does NOT specify a date, estimate a HARDCODED shelf life in DAYS from today based on the item type (e.g., Milk=7, Rice=365).
-
-    Return JSON ONLY:
+    2. Normalize names (e.g. "tomatoes" -> "tomato").
+    3. Return JSON ONLY.
+    
+    Output Format:
     {{
       "action": "add" | "consume",
       "items": [
-        {{
-          "normalized_name": "string (lowercase)",
-          "original_name": "string",
-          "quantity": number,
-          "unit": "kg/pcs/l",
-          "category": "string",
-          "auto_buy": boolean,
-          "estimated_shelf_life_days": number (integer),
-          "user_specified_date": "YYYY-MM-DD" (or null if not mentioned)
-        }}
+        {{ "normalized_name": "string", "quantity": number, "unit": "unit", "category": "string", "auto_buy": boolean, "estimated_shelf_life_days": number, "user_specified_date": "YYYY-MM-DD (optional)" }}
       ]
     }}
     """
 
     headers = {
-        "Authorization": f"Bearer {OPEN_API_KEY}",
-        "Content-Type": "application/json"
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "http://localhost:5002"
     }
     
     data = {
-        "model": "openai/gpt-4o-mini", # Or any robust model
+        "model": "openai/gpt-4o-mini", 
         "messages": [{"role": "user", "content": prompt}]
     }
 
     try:
+        print(f"🧠 Inventory sending request to OpenRouter...")
         response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data)
+        
+        if response.status_code != 200:
+            print(f"🔴 OpenRouter API Error: {response.status_code}")
+            print(f"🔴 Response Body: {response.text}")
+            return None
+
         content = response.json()['choices'][0]['message']['content']
-        # Clean markdown
+        
         if "```json" in content:
             content = content.split("```json")[1].split("```")[0]
+            
         return json.loads(content.strip())
+        
     except Exception as e:
-        print(f"LLM Error: {e}")
+        print(f"🔴 CRITICAL LLM EXCEPTION: {e}")
         return None
+
+# --- NEW GET ENDPOINT ---
+@app.route('/inventory', methods=['GET'])
+def get_inventory():
+    """
+    Returns the full inventory state as JSON.
+    Useful for the frontend dashboard.
+    """
+    data = get_all_inventory()
+    return jsonify({
+        "status": "success",
+        "count": len(data),
+        "inventory": data
+    })
 
 @app.route('/inventory/message', methods=['POST'])
 def handle_message():
@@ -121,4 +135,7 @@ def handle_message():
     })
 
 if __name__ == '__main__':
+    # Initialize DB if it doesn't exist
+    init_db()
+    print("🍅 Inventory Agent running on port 5002")
     app.run(port=5002, debug=True)
