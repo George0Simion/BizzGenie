@@ -1,25 +1,63 @@
-# orchestrator.py
 from flask import Flask, request, jsonify
 from threading import Thread
 from comms import send_json_to_service, SERVICE_URLS
 import time
 from ai_wrapper import generate_reply
-from flask_cors import CORS 
 import json
-
+import requests
 
 app = Flask(__name__)
 
 LANGUAGE = "ROMANIAN"
 previous_answererd = True
 
-
 USER_RESPONSE_STACK = []
 
-
-
-
 SERVICE_NAME = "orchestrator"
+
+# --- Proxy config ---
+PROXY_BASE_URL = "http://localhost:5000"
+PROXY_ORCHESTRATOR_ROUTE = "/from_orchestrator"   # route you will implement in proxy
+
+
+
+def dispatch_to_service_async(service_name: str, endpoint: str, payload: dict):
+    """
+    Trimite payload-ul către un serviciu în fundal (fire-and-forget),
+    fără să blocheze orchestratorul.
+    """
+    def _worker():
+        try:
+            print(f"[orchestrator] Async send to service={service_name}, endpoint={endpoint}")
+            send_json_to_service(service_name, endpoint, payload)
+            print(f"[orchestrator] Async send to {service_name}{endpoint} DONE")
+        except Exception as e:
+            print(f"[orchestrator] ERROR sending to {service_name}{endpoint}: {e}")
+
+    t = Thread(target=_worker, daemon=True)
+    t.start()
+
+
+
+
+
+def send_chatbox_response_to_proxy(text: str):
+    """
+    Trimite răspunsul rapid al orchestratorului direct către proxy.
+    Proxy-ul îl va trimite în chatbox imediat.
+    """
+    payload = {
+        "type": "chatbox_response",
+        "text": text
+    }
+    try:
+        url = f"{PROXY_BASE_URL}{PROXY_ORCHESTRATOR_ROUTE}"
+        print(f"[orchestrator] Sending chatbox_response to proxy: {payload}")
+        requests.post(url, json=payload, timeout=5)
+    except Exception as e:
+        print(f"[orchestrator] Failed to send chatbox_response to proxy: {e}")
+
+
 SYSTEM_PROMT_USER = """You are an AI agents manager called Orchestrator. You will receive messages from a small bussiness owner user and commmand the other AI services (legal, predictor , invetory , notification agent)
 to get their input.
 
@@ -60,14 +98,7 @@ to get their input.
 
 """
 SYSTEM_PROMT_USER = SYSTEM_PROMT_USER + f"all responses must be in {LANGUAGE} language."
-
 SYSTEM_PROMT_INTERNAL = ""
-
-
-
-USER_RESPONSE_STACK = []  # make sure this exists
-SERVICE_NAME = "orchestrator"
-
 
 
 def list_to_string(lst, sep="\n"):
@@ -75,6 +106,11 @@ def list_to_string(lst, sep="\n"):
 
 
 def parse_main_request_data(text: str):
+    """
+    Procesează mesajul utilizatorului, apelează modelul și:
+      - trimite comenzi către agenții (legal, inventory etc.)
+      - trimite un răspuns scurt către proxy prin send_chatbox_response_to_proxy(text)
+    """
     global USER_RESPONSE_STACK
 
     # Build history string
@@ -103,66 +139,81 @@ def parse_main_request_data(text: str):
 
     print("orchestrator parsed response:", response)
 
+    text_for_user = None
+
     # CASE 1: MODEL ASKS A QUESTION → keep context, do NOT clear stack
     if "question" in response:
         question = response["question"]
         USER_RESPONSE_STACK.append(question)
         print("orchestrator question to user:", question)
-        return response
+        text_for_user = question
 
-    # CASE 2: NO QUESTION → this is a final answer with actions
-    # Dispatch work to services here, then clear context.
+    else:
+        # CASE 2: NO QUESTION → this is a final answer with actions
+        if "inventory" in response:
+            inv = response["inventory"]
+            dispatch_to_service_async("inventory", "/receive", inv)
 
-    if "inventory" in response:
-        inv = response["inventory"]
-        send_json_to_service("inventory", "/receive" , inv)
+        if "legal" in response:
+            leg = response["legal"]
+            dispatch_to_service_async("legal", "/input", response)
 
+        if "immediate_response" in response:
+            print("orchestrator immediate response:", response["immediate_response"])
+            text_for_user = response["immediate_response"]
 
-    if "legal" in response:
-        leg = response["legal"]
-        send_json_to_service("legal", "/input", response)
+        if not text_for_user:
+            text_for_user = "Am procesat cererea ta."
 
-    if "immediate_response" in response:
-        print("orchestrator immediate response:", response["immediate_response"])
-        # TODO: send this back to the user
+        # Now that everything is resolved for this “thread”, clear context
+        print("Conversation for this request resolved, clearing USER_RESPONSE_STACK")
+        USER_RESPONSE_STACK.clear()
 
-    # Now that everything is resolved for this “thread”, clear context
-    print("Conversation for this request resolved, clearing USER_RESPONSE_STACK")
-    USER_RESPONSE_STACK.clear()
+    # Send the quick chatbox response to proxy
+    send_chatbox_response_to_proxy(text_for_user)
 
     return response
 
 
-
-@app.route("/text", methods=["POST", "GET"])
+@app.route("/text", methods=["POST"])
 def handle_text():
-    if request.method == "POST":
-        data = request.json
-        print("Received data:", data)
-        message = data.get("msg", "")
-        print("Processing message:", message) 
-        parse_main_request_data(message)
+    """
+    PRIMEȘTE JSON de la proxy.
+    Nu întoarce date reale pentru UI.
+    Tot ce este vizibil pentru user se trimite înapoi la proxy
+    prin send_chatbox_response_to_proxy().
+    """
+    try:
+        data = request.get_json(silent=False) or {}
+    except Exception as e:
+        print("Error parsing JSON from proxy:", e)
+        return jsonify({"error": "Invalid JSON"}), 400
 
-        return jsonify({"received": data}), 200
-    return jsonify({"message": "Send a POST request with JSON data."}), 200
+    print("Received JSON from proxy on /text:", data)
 
+    message = data.get("msg") or data.get("text") or ""
+    context = data.get("context", {}) or {}
 
+    print("Processing message:", message)
+    print("Context:", context)
+
+    # Trigger the logic; it will call send_chatbox_response_to_proxy() internally
+    parse_main_request_data(message)
+
+    # Minimal ACK; proxy ignores this content
+    return "", 204
 
 
 def send_message(data):
     send_json_to_service("frontend", "/send_message", data)
-
-    
-
 
 
 @app.route("/legal_recieve", methods=["POST"])
 def legal_recieve():
     data = request.json
     print("Received legal data:", data)
-
+    send_chatbox_response_to_proxy(data)
     return jsonify({"status": "received", "data": data}), 200
-
 
 
 @app.route("/receive_inventory", methods=["GET"])
@@ -170,18 +221,8 @@ def receive_inventory():
     # receive inventory data from inventory service
     data = request.json
     print("Received inventory data:", data)
-
     return jsonify({"status": "received", "data": data}), 200
 
 
-
-
 if __name__ == "__main__":
-
     app.run(port=5001, debug=True)
-
-
-    
-    
-    
-    
