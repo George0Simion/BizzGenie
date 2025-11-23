@@ -227,6 +227,10 @@ def receive_legal():
 
 import requests   # <-- add this
 
+
+
+
+
 @app.route("/get-inventory", methods=["GET"])
 def proxy_get_inventory():
     """
@@ -244,6 +248,9 @@ def proxy_get_inventory():
     except Exception as e:
         print("[orchestrator] Error fetching inventory:", e)
         return jsonify({"error": str(e)}), 500
+
+
+
 
 
 if __name__ == "__main__":
