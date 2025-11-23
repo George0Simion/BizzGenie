@@ -109,13 +109,13 @@ const AppRoutes = () => {
 };
 
 function App() {
-	return (
-		<BusinessProvider>
-			<BrowserRouter>
-				<AppRoutes />
-			</BrowserRouter>
-		</BusinessProvider>
-	);
+  return (
+    <BrowserRouter>
+      <BusinessProvider>
+        <AppRoutes />
+      </BusinessProvider>
+    </BrowserRouter>
+  );
 }
 
 export default App;
