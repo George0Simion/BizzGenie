@@ -1,11 +1,17 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 import requests
 import threading
 import time
 import random
+import os
 from datetime import datetime, timedelta
 
 app = Flask(__name__)
+
+# Configurare Folder Uploads (unde se salvează fizic fișierele)
+UPLOAD_FOLDER = 'uploads'
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
 
 # URL-ul unde trimitem datele către Proxy (Push)
 PROXY_WEBHOOK_URL = "http://localhost:5000/internal/receive"
@@ -52,7 +58,7 @@ legal_db = [
     }
 ]
 
-# 3. LEGAL RESEARCH - Datele complexe cerute
+# 3. LEGAL RESEARCH - Datele complexe cerute (Trimise automat)
 TOMATO_RESEARCH_DATA = {
   "service": "legal",
   "subject": "Siguranță Alimentară: Roșii",
@@ -88,6 +94,113 @@ TOMATO_RESEARCH_DATA = {
 }
 
 # ==========================================
+# RUTE (ENDPOINT-URI)
+# ==========================================
+
+# 1. PROCESARE CHAT (Ruta /process)
+@app.route('/process', methods=['POST'])
+def handle_request():
+    data = request.json
+    # Citim mesajul
+    user_text = data.get('message') or data.get('msg') or ""
+    
+    print(f"📩 [Simulator] Chat primit: '{user_text}'")
+    
+    # Simulăm răspunsul AI pe un alt thread
+    def reply():
+        time.sleep(1.5) # Gândește...
+        echo_text = f"Echo Server: Am primit mesajul tău '{user_text}'."
+        try:
+            requests.post(PROXY_WEBHOOK_URL, json={
+                "type": "chat_message",
+                "payload": {"text": echo_text, "sender": "ai"}
+            })
+        except: pass
+        
+    threading.Thread(target=reply).start()
+    return jsonify({"status": "received"})
+
+
+# 2. SALVARE LEGAL
+# Proxy-ul trimite aici: http://localhost:5001/legal/save
+@app.route('/legal/save', methods=['POST'])
+def handle_legal_save():
+    global legal_db
+    data = request.json
+    
+    if 'tasks' in data:
+        print("💾 [Simulator] Salvare Legal primită.")
+        legal_db = data['tasks']
+        
+        # Confirmare asincronă
+        def confirm():
+            time.sleep(1)
+            requests.post(PROXY_WEBHOOK_URL, json={
+                "type": "notification",
+                "payload": {"title": "Modificări Salvate", "desc": "Datele legale au fost actualizate.", "type": "info"}
+            })
+        threading.Thread(target=confirm).start()
+
+    return jsonify({"status": "saved"})
+
+
+# 3. UPLOAD DOCUMENT
+# Proxy-ul trimite aici: http://localhost:5001/upload
+@app.route('/upload', methods=['POST'])
+def handle_upload():
+    if 'file' not in request.files:
+        return jsonify({"error": "no file"}), 400
+        
+    file = request.files['file']
+    filename = file.filename
+    
+    # 1. SALVĂM FIZIC PE DISC
+    save_path = os.path.join(UPLOAD_FOLDER, filename)
+    file.save(save_path)
+    
+    print(f"📂 [Simulator] Fișier salvat la: {save_path}")
+    
+    # Simulam analiza documentului pe alt thread
+    def process_document():
+        time.sleep(3) # Analiza dureaza 3 secunde
+        
+        # Generăm link-ul de download (prin Proxy 5000)
+        download_link = f"http://localhost:5000/api/files/{filename}"
+
+        try:
+            # 1. Notificare
+            requests.post(PROXY_WEBHOOK_URL, json={
+                "type": "notification",
+                "payload": {
+                    "title": "Document Analizat",
+                    "desc": f"Am extras datele din {filename}. Factura pare validă.",
+                    "type": "info",
+                    "link": download_link
+                }
+            })
+            
+            # 2. Mesaj Chat
+            requests.post(PROXY_WEBHOOK_URL, json={
+                "type": "chat_message",
+                "payload": {
+                    "text": f"Am analizat documentul '{filename}'. Am detectat o sumă de 1500 RON către furnizor.",
+                    "sender": "ai"
+                }
+            })
+        except: pass
+
+    threading.Thread(target=process_document).start()
+    return jsonify({"status": "received"})
+
+
+# 4. DOWNLOAD ROUTE (NOU)
+@app.route('/files/<path:filename>', methods=['GET'])
+def download_file(filename):
+    # Servește fișierul din folderul uploads
+    return send_from_directory(UPLOAD_FOLDER, filename)
+
+
+# ==========================================
 # WORKERS (PROCESE DE FUNDAL)
 # ==========================================
 
@@ -108,8 +221,7 @@ def automatic_inventory_worker():
                 change = random.choice([-0.5, 0.0, 2.0])
                 inventory_db[idx]["quantity"] = max(0.0, inventory_db[idx]["quantity"] + change)
 
-            # B. Adăugăm produs nou (Aprovizionare)
-            # 70% șanse să vină marfă nouă
+            # B. Adăugăm produs nou (Aprovizionare) - 70% șanse
             if random.random() > 0.3:
                 new_id = len(inventory_db) + 1
                 
@@ -168,7 +280,6 @@ def trigger_complex_legal_research():
     }
     try:
         requests.post(PROXY_WEBHOOK_URL, json=payload)
-        # requests.post(PROXY_WEBHOOK_URL, json={})
         # Trimitem și notificare
         requests.post(PROXY_WEBHOOK_URL, json={
             "type": "notification",
@@ -178,70 +289,19 @@ def trigger_complex_legal_research():
 
 
 def automatic_notification_worker():
-    """ Trimite o notificare random la fiecare 30 secunde """
+    """ Trimite o notificare random la fiecare 25 secunde """
     while True:
-        time.sleep(30)
+        time.sleep(25)
         alerts = [
             {"title": "Factură Scadentă", "desc": "Factura E-ON expiră mâine.", "type": "warning"},
-            {"title": "Client Nemulțumit", "desc": "Review negativ pe Glovo.", "type": "critical"}
+            {"title": "Client Nemulțumit", "desc": "Review negativ pe Glovo.", "type": "critical"},
+            {"title": "Stoc Refăcut", "desc": "Marfa a fost recepționată.", "type": "info"}
         ]
         alert = random.choice(alerts)
         try:
             requests.post(PROXY_WEBHOOK_URL, json={"type": "notification", "payload": alert})
             print(f"🔔 [Simulator] Notificare trimisă: {alert['title']}")
         except: pass
-
-
-# ==========================================
-# RUTE HTTP (API)
-# ==========================================
-
-# 1. PROCESARE CHAT
-# Proxy-ul tău trimite aici: http://localhost:5001/process
-@app.route('/process', methods=['POST'])
-def handle_chat_request():
-    data = request.json
-    # Citim mesajul
-    user_text = data.get('message') or data.get('msg') or ""
-    
-    print(f"📩 [Simulator] Chat primit: '{user_text}'")
-    
-    # Simulăm răspunsul AI pe un alt thread
-    def reply():
-        time.sleep(1.5) # Gândește...
-        echo_text = f"Echo Server: Am primit mesajul tău '{user_text}' și l-am procesat."
-        try:
-            requests.post(PROXY_WEBHOOK_URL, json={
-                "type": "chat_message",
-                "payload": {"text": echo_text, "sender": "ai"}
-            })
-        except: pass
-        
-    threading.Thread(target=reply).start()
-    return jsonify({"status": "received"})
-
-
-# 2. SALVARE LEGAL
-# Proxy-ul tău trimite aici: http://localhost:5001/legal/save
-@app.route('/legal/save', methods=['POST'])
-def handle_legal_save():
-    global legal_db
-    data = request.json
-    
-    if 'tasks' in data:
-        print("💾 [Simulator] Salvare Legal primită.")
-        legal_db = data['tasks']
-        
-        # Confirmare asincronă
-        def confirm():
-            time.sleep(1)
-            requests.post(PROXY_WEBHOOK_URL, json={
-                "type": "notification",
-                "payload": {"title": "Salvat", "desc": "Modificările au fost înregistrate în sistem.", "type": "info"}
-            })
-        threading.Thread(target=confirm).start()
-
-    return jsonify({"status": "saved"})
 
 
 if __name__ == '__main__':
@@ -251,5 +311,4 @@ if __name__ == '__main__':
     threading.Thread(target=automatic_notification_worker, daemon=True).start()
     
     print("🤖 SIMULATOR COMPLET (Port 5001) - Gata de acțiune!")
-    # use_reloader=False previne dublarea workerilor
     app.run(port=5001, debug=True, use_reloader=False)

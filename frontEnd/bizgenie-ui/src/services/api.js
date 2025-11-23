@@ -29,15 +29,26 @@ export const BusinessService = {
     }
   },
 
-  // 4. SAVE LEGAL (NOU)
+  // 4. SAVE LEGAL
   saveLegalTasks: async (tasks) => {
     try {
-      // Trimitem lista modificata catre Proxy
       const response = await axios.post(`${PROXY_URL}/legal/save`, { tasks });
       return response.data;
     } catch (error) {
       console.error("Save error:", error);
       throw error;
+    }
+  },
+
+  // 5. UPLOAD DOCUMENT (NOU)
+  uploadDocument: async (formData) => {
+    try {
+        // Important: Nu setam manual Content-Type, lasam axios sa puna boundary-ul corect
+        const response = await axios.post(`${PROXY_URL}/upload`, formData);
+        return response.data;
+    } catch (error) {
+        console.error("Upload error:", error);
+        throw error;
     }
   }
 };

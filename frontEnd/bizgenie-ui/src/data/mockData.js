@@ -14,7 +14,7 @@ export const MOCK_RESTAURANT_DATA = {
     { id: 2, text: "Ai 3 angajați noi. Vrei să generez contractele de muncă?" }
   ],
   
-  // --- INVENTAR (Format Nou) ---
+  // --- INVENTAR ---
   inventory: [
     { 
         id: 1, 
@@ -60,7 +60,7 @@ export const MOCK_RESTAURANT_DATA = {
     ]
   },
 
-  // --- LEGAL (Format Nou - Sincronizat cu Simulatorul) ---
+  // --- LEGAL (BOGAT ÎN DATE) ---
   legal: {
     status: "Înmatriculat",
     compliance_score: 85,
@@ -73,9 +73,25 @@ export const MOCK_RESTAURANT_DATA = {
         status: "completed",
         description: "Procesul obligatoriu de înregistrare a firmei la Registrul Comerțului.",
         steps: [
-            { step: "Rezervare nume firmă", done: true },
-            { step: "Depunere capital social", done: true },
-            { step: "Depunere dosar complet", done: true },
+            { 
+              step: "Rezervare nume firmă", 
+              action: "Verifică disponibilitatea numelui și rezervă-l online.",
+              citation: "Legea 31/1990",
+              source: "https://www.onrc.ro/",
+              done: true 
+            },
+            { 
+              step: "Depunere capital social", 
+              action: "Deschide cont bancar și depune capitalul minim.",
+              citation: "OUG 44/2008",
+              done: true 
+            },
+            { 
+              step: "Depunere dosar complet", 
+              action: "Act constitutiv, dovezi sediu, declarații asociați.",
+              source: "https://www.onrc.ro/index.php/ro/inmatriculari/persoane-juridice/nume-colectiv",
+              done: true 
+            },
             { step: "Ridicare certificat", done: true }
         ]
       },
@@ -85,8 +101,17 @@ export const MOCK_RESTAURANT_DATA = {
         status: "in_progress",
         description: "Obținerea acordului de funcționare de la primăria de sector/locală.",
         steps: [
-            { step: "Contract Salubritate", done: true },
-            { step: "Schiță spațiu", done: true },
+            { 
+              step: "Contract Salubritate", 
+              action: "Încheie contract cu o firmă autorizată de ridicare deșeuri.",
+              citation: "HCL Sector 1",
+              done: true 
+            },
+            { 
+              step: "Schiță spațiu", 
+              action: "Planul cotat al locației vizat de un arhitect.",
+              done: true 
+            },
             { step: "Plată taxă timbru", done: false },
             { step: "Depunere cerere", done: false }
         ]
@@ -96,8 +121,17 @@ export const MOCK_RESTAURANT_DATA = {
         title: "Autorizație ISU (Incendiu)",
         status: "pending",
         description: "Documentația pentru securitatea la incendiu.",
+        risks: [
+            { risk: "Amendă Majoră", mitigation: "Până la 50.000 RON pentru lipsa autorizației." },
+            { risk: "Închidere Activitate", mitigation: "Suspendare până la intrarea în legalitate." }
+        ],
         steps: [
-            { step: "Plan releveu", done: false },
+            { 
+              step: "Plan releveu", 
+              action: "Realizat de un proiectant autorizat.",
+              citation: "Legea 307/2006",
+              done: false 
+            },
             { step: "Instalare hidranți", done: false },
             { step: "Verificare extinctoare", done: false }
         ]
