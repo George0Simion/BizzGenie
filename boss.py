@@ -1,85 +1,83 @@
-from flask import Flask, request, jsonify, Response
-import requests
+#!/usr/bin/env python3
+import subprocess
+import sys
+import time
+import pathlib
+import signal
 
-app = Flask(__name__)
+ROOT = pathlib.Path(__file__).resolve().parent
 
-# All other Flask services you want to talk to
-# Key is a name, value is the base URL
-UPSTREAM_SERVERS = {
-    "orchestrator": "http://127.0.0.1:5001",
-    "legal": "http://127.0.0.1:5002",
-    "predictor": "http://127.0.0.1:5003",
-}
+processes: list[tuple[str, subprocess.Popen]] = []
 
 
-def forward_request(service_name):
-    """
-    Forward the current Flask request (JSON-only) to the given service
-    and return its response.
-    """
+def start(name: str, cmd: list[str]):
+    """Start a service as a background process."""
+    print(f"▶️  Starting {name}: {' '.join(cmd)}")
+    p = subprocess.Popen(cmd, cwd=ROOT)
+    processes.append((name, p))
 
-    if service_name not in UPSTREAM_SERVERS:
-        return jsonify({"error": f"Unknown service '{service_name}'"}), 404
 
-    target_base = UPSTREAM_SERVERS[service_name]
-    # Change this if your upstream uses a different path than "/"
-    target_url = f"{target_base}/"
-
+def main():
     try:
-        if request.method == "GET":
-            # Forward query params
-            resp = requests.get(
-                target_url,
-                params=request.args,
-                timeout=5,
-            )
-        elif request.method == "POST":
-            # Forward JSON body
-            data = request.get_json(silent=True) or {}
-            resp = requests.post(
-                target_url,
-                json=data,
-                params=request.args,
-                timeout=5,
-            )
+        # 1️⃣ Inventory agent (Flask on 5002)
+        # agents/inventory_agent.py contains the Flask app & init_db
+        start("inventory", [sys.executable, "agents/inventory_agent.py"])
+
+        # 2️⃣ Legal agent (Flask on 5003)
+        # file name in your repo screenshot: legal_placeholder.py
+        start("legal", [sys.executable, "legal_placeholder.py"])
+
+        # 3️⃣ Orchestrator (Flask on 5001)
+        start("orchestrator", [sys.executable, "orchestrator.py"])
+
+        # 4️⃣ Finance API (FastAPI on 5004)
+        # Uses uvicorn to serve backend/financeAPI.py:app
+        start(
+            "finance",
+            [
+                sys.executable,
+                "-m",
+                "uvicorn",
+                "backend.financeAPI:app",
+                "--port",
+                "5004",
+                "--reload",
+            ],
+        )
+
+        print("⏳ Giving services a few seconds to start...")
+        time.sleep(7)
+
+        # 5️⃣ Run unified tests (including finance + end-to-end)
+        print("🧪 Running tests/test.py ...")
+        test_proc = subprocess.run(
+            [sys.executable, "tests/test.py"],
+            cwd=ROOT,
+        )
+        if test_proc.returncode != 0:
+            print(f"❌ Tests failed with code {test_proc.returncode}")
         else:
-            return jsonify({"error": "Method not supported"}), 405
+            print("✅ Tests passed.")
 
-    except requests.RequestException as e:
-        return jsonify({"error": str(e), "target": service_name}), 502
+        print("\nAll services are running. Press Ctrl+C to stop them.")
+        while True:
+            time.sleep(1)
 
-    # Try to return JSON if possible, otherwise raw text
-    content_type = resp.headers.get("Content-Type", "")
-    if content_type.startswith("application/json"):
-        return jsonify(resp.json()), resp.status_code
-    else:
-        # Pass through other content types as-is
-        return Response(resp.content, status=resp.status_code, content_type=content_type)
+    except KeyboardInterrupt:
+        print("\n🛑 KeyboardInterrupt received, stopping all services...")
+    finally:
+        for name, p in processes:
+            if p.poll() is None:
+                print(f"🔻 Terminating {name} (pid={p.pid})")
+                p.terminate()
 
-
-@app.route("/legal", methods=["POST", "GET"])
-def legal():
-    return forward_request("legal")
-
-
-@app.route("/orchestrator", methods=["POST", "GET"])
-def orchestrator():
-    return forward_request("orchestrator")
-
-
-@app.route("/predictor", methods=["POST", "GET"])
-def predictor():
-    return forward_request("predictor")
-
-
-
-
-
-
-
-
+        # Give them a moment to exit cleanly
+        time.sleep(2)
+        for name, p in processes:
+            if p.poll() is None:
+                print(f"⚠️  {name} still running, killing...")
+                p.kill()
 
 
 if __name__ == "__main__":
-    # Central broker on port 5000
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    main()

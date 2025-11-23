@@ -5,22 +5,31 @@ from flask import Flask, request, jsonify
 from datetime import datetime, timedelta
 import sys
 
-# Ensure we can find the db folder
+# Ensure database folder is visible
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from db.inventory_functions import init_db, add_product, consume_product, get_alerts, get_all_inventory
 
 app = Flask(__name__)
 
-# 🔑 CONFIGURATION
-site_url = "http://localhost:5000"
-app_name = "InventoryAgent"
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# Initialize DB on startup
-init_db()
+
+# -------------- COLOR LOGGING HELPERS --------------
+def green(msg): print(f"\033[92m{msg}\033[0m")
+def yellow(msg): print(f"\033[93m{msg}\033[0m")
+def red(msg): print(f"\033[91m{msg}\033[0m")
+def cyan(msg): print(f"\033[96m{msg}\033[0m")
+
+
+# ---------------------------------------------------
+# -------------- LLM QUERY FUNCTION -----------------
+# ---------------------------------------------------
 
 def query_llm(user_text):
     current_date = datetime.now().strftime("%Y-%m-%d")
-    
+
+    cyan(f"\n🧠 LLM REQUEST → Processing user message: '{user_text}'")
+
     prompt = f"""
     You are an Intelligent Inventory System. Today is {current_date}.
     User Input: "{user_text}"
@@ -34,7 +43,10 @@ def query_llm(user_text):
     {{
       "action": "add" | "consume",
       "items": [
-        {{ "normalized_name": "string", "quantity": number, "unit": "unit", "category": "string", "auto_buy": boolean, "estimated_shelf_life_days": number, "user_specified_date": "YYYY-MM-DD (optional)" }}
+        {{ "normalized_name": "string", "quantity": number, "unit": "unit", 
+           "category": "string", "auto_buy": boolean,
+           "estimated_shelf_life_days": number,
+           "user_specified_date": "optional YYYY-MM-DD" }}
       ]
     }}
     """
@@ -42,106 +54,169 @@ def query_llm(user_text):
     headers = {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
         "Content-Type": "application/json",
-        "HTTP-Referer": "http://localhost:5002"
     }
-    
+
     data = {
-        "model": "openai/gpt-4o-mini", 
+        "model": "openai/gpt-4o-mini",
         "messages": [{"role": "user", "content": prompt}]
     }
 
     try:
-        print(f"🧠 Inventory sending request to OpenRouter...")
-        response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data)
-        
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers=headers, json=data
+        )
+
         if response.status_code != 200:
-            print(f"🔴 OpenRouter API Error: {response.status_code}")
-            print(f"🔴 Response Body: {response.text}")
+            red(f"❌ LLM API Error: {response.status_code}")
+            red(response.text)
             return None
 
-        content = response.json()['choices'][0]['message']['content']
-        
-        if "```json" in content:
-            content = content.split("```json")[1].split("```")[0]
-            
-        return json.loads(content.strip())
-        
+        raw_content = response.json()['choices'][0]['message']['content']
+
+        cyan("🔍 RAW LLM RESPONSE:")
+        print(raw_content)
+
+        # Strip markdown fences if present
+        if "```json" in raw_content:
+            raw_content = raw_content.split("```json")[1].split("```")[0]
+
+        parsed = json.loads(raw_content.strip())
+
+        green(f"✅ PARSED LLM JSON: {parsed}")
+        return parsed
+
     except Exception as e:
-        print(f"🔴 CRITICAL LLM EXCEPTION: {e}")
+        red(f"❌ CRITICAL ERROR talking to LLM: {e}")
         return None
 
-# --- NEW GET ENDPOINT ---
+
+
+# ---------------------------------------------------
+# -------------- API ROUTES -------------------------
+# ---------------------------------------------------
+
 @app.route('/inventory', methods=['GET'])
 def get_inventory():
-    """
-    Returns the full inventory state as JSON.
-    Useful for the frontend dashboard.
-    """
+    cyan("\n📦 GET /inventory called")
     try:
-        data = get_all_inventory()
-        return jsonify({
-            "status": "success",
-            "count": len(data),
-            "inventory": data
-        })
+        inv = get_all_inventory()
+        green(f"Returned {len(inv)} inventory items")
+        return jsonify({"status": "success", "inventory": inv})
     except Exception as e:
+        red(f"❌ Failed to fetch inventory: {e}")
         return jsonify({"error": str(e)}), 500
+
+
 
 @app.route('/inventory/message', methods=['POST'])
 def handle_message():
+    cyan("\n------------------------------------------------------")
+    cyan("📥 POST /inventory/message")
+    cyan("------------------------------------------------------")
+
     data = request.json
-    user_message = data.get('message', '')
+    user_message = data.get("message", "")
 
-    parsed_data = query_llm(user_message)
-    
-    if not parsed_data:
-        return jsonify({"error": "Failed to parse"}), 500
+    yellow(f"User message received: '{user_message}'")
 
-    action = parsed_data.get('action')
-    items = parsed_data.get('items', [])
+    parsed = query_llm(user_message)
+    if not parsed:
+        red("❌ Could not parse LLM output")
+        return jsonify({"error": "Parsing failed"}), 500
+
+    action = parsed.get("action")
+    items = parsed.get("items", [])
+
+    green(f"\n📝 ACTION = {action}")
+    green(f"📝 ITEMS  = {items}")
+
     logs = []
 
+    # ---------------------------------------------------
+    # PROCESS EACH ITEM
+    # ---------------------------------------------------
     for item in items:
-        # Use the Normalized Name for DB consistency
-        name = item['normalized_name']
-        qty = float(item['quantity'])
-        unit = item.get('unit', 'pcs')
-        
+        name = item["normalized_name"]
+        qty = float(item["quantity"])
+        unit = item.get("unit", "pcs")
+
+        cyan(f"\n🔹 Processing item:")
+        print(f"      Name      = {name}")
+        print(f"      Quantity  = {qty} {unit}")
+        print(f"      Raw item  = {item}")
+
         if action == "add":
-            category = item.get('category', 'general')
-            auto_buy = 1 if item.get('auto_buy') else 0
-            
-            # Date Logic: User specified OR Calculated Hardcoded
-            if item.get('user_specified_date'):
-                expiry = item['user_specified_date']
+            category = item.get("category", "general")
+            auto_buy = 1 if item.get("auto_buy") else 0
+
+            # Expiration date
+            if item.get("user_specified_date"):
+                expiry = item["user_specified_date"]
+                yellow(f"📅 Using user-specified date: {expiry}")
             else:
-                # Calculate expiry based on LLM's shelf life estimate
-                days_to_add = item.get('estimated_shelf_life_days', 7)
-                expiry = (datetime.now() + timedelta(days=days_to_add)).strftime("%Y-%m-%d")
+                days = item.get("estimated_shelf_life_days", 7)
+                expiry = (datetime.now() + timedelta(days=days)).strftime("%Y-%m-%d")
+                yellow(f"📅 Using estimated shelf life: {expiry}")
+
+            cyan("➕ ADDING PRODUCT TO DB:")
+            print(f"       - name={name}")
+            print(f"       - category={category}")
+            print(f"       - qty={qty}")
+            print(f"       - unit={unit}")
+            print(f"       - expiry={expiry}")
+            print(f"       - auto_buy={auto_buy}")
 
             result = add_product(name, category, qty, unit, expiry, auto_buy)
-            logs.append(result)
-            
-        elif action == "consume":
-            result = consume_product(name, qty)
+            green(f"   ✔ DB Result: {result}")
             logs.append(result)
 
+        elif action == "consume":
+            cyan("➖ CONSUMING PRODUCT FROM DB:")
+            print(f"       - name={name}")
+            print(f"       - qty={qty}")
+
+            result = consume_product(name, qty)
+            green(f"   ✔ DB Result: {result}")
+            logs.append(result)
+
+
+
+    # ---------------------------------------------------
+    # CHECK ALERTS
+    # ---------------------------------------------------
+    cyan("\n🔔 Checking low-stock alerts...")
     alerts = get_alerts()
-    
-    response_text = f"  {'; '.join(logs)}."
-    
-    if alerts['restock_needed']:
-        response_text += f"\n🛒 AUTO-BUY NEEDED: {', '.join(alerts['restock_needed'])}"
-    
-    return jsonify({
+    yellow(f"Alerts: {alerts}")
+
+
+    # ---------------------------------------------------
+    # Assemble Response
+    # ---------------------------------------------------
+    response_text = "; ".join(logs)
+
+    if alerts["restock_needed"]:
+        response_text += "\n🛒 Auto-buy triggered for: " + ", ".join(alerts["restock_needed"])
+        yellow("AUTO BUY NEEDED!")
+
+    final = {
         "agent": "Inventory",
-        "processed_data": parsed_data,
+        "processed_data": parsed,
         "response_text": response_text,
         "alerts": alerts
-    })
+    }
+
+    green("\n📤 FINAL RESPONSE TO ORCHESTRATOR:")
+    print(json.dumps(final, indent=4))
+
+    return jsonify(final)
+
+
+# ---------------------------------------------------
+# SERVER START
+# ---------------------------------------------------
 
 if __name__ == '__main__':
-    # Initialize DB if it doesn't exist
     init_db()
-    print("🍅 Inventory Agent running on port 5002")
+    cyan("🍅 Inventory Agent running on port 5002")
     app.run(port=5002, debug=True)
