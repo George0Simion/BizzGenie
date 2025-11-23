@@ -9,7 +9,7 @@ SERVICE_NAME = "legal"
 def receive_from_any_service():
     """
     Any service can POST JSON here:
-      POST http://127.0.0.1:5002/send
+      POST http://127.0.0.1:500/send
     """
     data = request.get_json(silent=True) or {}
     print(f"[{SERVICE_NAME}] /send received:", data)
@@ -47,4 +47,4 @@ def work():
 
 
 if __name__ == "__main__":
-    app.run(port=5002, debug=True)
+    app.run(port=5003, debug=True)

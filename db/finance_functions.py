@@ -183,34 +183,125 @@
 #     return rows[:top_n]
 
 # /db/finance_functions.py
-"""
-For now we use ONLY the mock DB implementation (in-memory fake data),
-so tests and agents do not need a real Mongo instance running.
+# """
+# For now we use ONLY the mock DB implementation (in-memory fake data),
+# so tests and agents do not need a real Mongo instance running.
 
-Later, when you have real Mongo, you can switch this file to select
-between mock and real implementations based on an environment variable.
+# Later, when you have real Mongo, you can switch this file to select
+# between mock and real implementations based on an environment variable.
+# """
+
+# import datetime
+# from typing import List, Dict
+
+# from db.mockDB import (
+#     get_daily_profit as _mock_get_daily_profit,
+#     get_profit_by_product as _mock_get_profit_by_product,
+#     get_profit_by_product_delta as _mock_get_profit_by_product_delta,
+# )
+
+# # Re-export the functions with the same signatures
+
+# def get_daily_profit(start_date: datetime.date,
+#                      end_date: datetime.date) -> List[Dict]:
+#     return _mock_get_daily_profit(start_date, end_date)
+
+
+# def get_profit_by_product(start_date: datetime.date,
+#                           end_date: datetime.date,
+#                           top_n: int = 20) -> List[Dict]:
+#     return _mock_get_profit_by_product(start_date, end_date, top_n)
+
+
+# def get_profit_by_product_delta(
+#     start_start: datetime.date, start_end: datetime.date,
+#     end_start: datetime.date, end_end: datetime.date,
+#     top_n: int = 20,
+# ) -> List[Dict]:
+#     return _mock_get_profit_by_product_delta(
+#         start_start, start_end, end_start, end_end, top_n
+#     )
+
+"""
+Finance DB functions.
+
+For now this uses simple in-memory fake data, but DOES NOT depend on db.mockDB.
+
+Later you can replace these with real queries (Mongo, Postgres, etc.).
 """
 
-import datetime
 from typing import List, Dict
+import datetime
 
-from db.mockDB import (
-    get_daily_profit as _mock_get_daily_profit,
-    get_profit_by_product as _mock_get_profit_by_product,
-    get_profit_by_product_delta as _mock_get_profit_by_product_delta,
-)
+# ---- fake data (same shape as old mockDB, but local here) ----
 
-# Re-export the functions with the same signatures
+_FAKE_DAILY = [
+    # date, revenue, cost
+    ("2025-11-10", 1000, 700),
+    ("2025-11-11", 1100, 750),
+    ("2025-11-12", 900, 700),
+    ("2025-11-13", 950, 720),
+    ("2025-11-14", 800, 650),
+    ("2025-11-15", 780, 640),
+    ("2025-11-16", 750, 650),
+    ("2025-11-17", 730, 660),
+    ("2025-11-18", 700, 670),
+    ("2025-11-19", 690, 680),
+]
+
+_FAKE_PRODUCT_DELTA = [
+    ("burger", "Burger clasic",      4000, 2500),  # big drop
+    ("pizza",  "Pizza Margherita",   3000, 3200),  # small increase
+    ("pasta",  "Penne Alfredo",      2000, 1500),  # drop
+    ("salad",  "Salată grecească",   1000, 900),   # small drop
+    ("soda",   "Suc la pahar",        800, 900),   # increase
+]
+
+
+def _parse_date(s: str) -> datetime.date:
+    return datetime.date.fromisoformat(s)
+
 
 def get_daily_profit(start_date: datetime.date,
                      end_date: datetime.date) -> List[Dict]:
-    return _mock_get_daily_profit(start_date, end_date)
+    """
+    Returns list of {"date", "revenue", "cost", "profit"} between the given dates.
+    Currently uses the in-memory _FAKE_DAILY data.
+    """
+    result = []
+    for ds, revenue, cost in _FAKE_DAILY:
+        d = _parse_date(ds)
+        if start_date <= d <= end_date:
+            profit = revenue - cost
+            result.append({
+                "date": d,
+                "revenue": float(revenue),
+                "cost": float(cost),
+                "profit": float(profit),
+            })
+    result.sort(key=lambda r: r["date"])
+    return result
 
 
 def get_profit_by_product(start_date: datetime.date,
                           end_date: datetime.date,
                           top_n: int = 20) -> List[Dict]:
-    return _mock_get_profit_by_product(start_date, end_date, top_n)
+    """
+    Returns top products for a given period, sorted by profit descending.
+    Currently uses the in-memory _FAKE_PRODUCT_DELTA current period.
+    """
+    rows = [
+        {
+            "product_id": pid,
+            "product_name": name,
+            "revenue": 0.0,
+            "cost": 0.0,
+            "profit": float(profit_curr),
+        }
+        for (pid, name, profit_prev, profit_curr) in _FAKE_PRODUCT_DELTA
+    ]
+    rows.sort(key=lambda r: r["profit"], reverse=True)
+    return rows[:top_n]
 
 
 def get_profit_by_product_delta(
@@ -218,6 +309,21 @@ def get_profit_by_product_delta(
     end_start: datetime.date, end_end: datetime.date,
     top_n: int = 20,
 ) -> List[Dict]:
-    return _mock_get_profit_by_product_delta(
-        start_start, start_end, end_start, end_end, top_n
-    )
+    """
+    Compare two periods (e.g. last month vs previous month)
+    and return products sorted by profit_delta (end - start).
+    Currently uses the in-memory _FAKE_PRODUCT_DELTA data.
+    """
+    rows = []
+    for (pid, name, profit_prev, profit_curr) in _FAKE_PRODUCT_DELTA:
+        delta = profit_curr - profit_prev
+        rows.append({
+            "product_id": pid,
+            "product_name": name,
+            "profit_period1": float(profit_prev),
+            "profit_period2": float(profit_curr),
+            "profit_delta": float(delta),
+        })
+    rows.sort(key=lambda r: r["profit_delta"])
+    return rows[:top_n]
+
