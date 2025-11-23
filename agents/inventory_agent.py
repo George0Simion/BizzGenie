@@ -11,7 +11,7 @@ from db.inventory_functions import init_db, add_product, consume_product, get_al
 app = Flask(__name__)
 
 # 🔑 CONFIGURATION
-OPENROUTER_API_KEY = ""
+
 site_url = "http://localhost:5000"
 app_name = "InventoryAgent"
 
