@@ -2,67 +2,121 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
 import json
+import threading
+import time
 
 app = Flask(__name__)
 CORS(app)
 
-# Porturile
 PROXY_PORT = 5000
-TARGET_URL = "http://localhost:5001/process"
 
-# Coada de mesaje pentru Frontend (Polling)
+# --- FIX 1: URL Corect (Sincronizat cu Simulatorul) ---
+TARGET_URL = "http://localhost:5001/process" 
+INVENTORY_URL = "http://localhost:5002/inventory"
+
 PENDING_UPDATES = []
 
-# --- 1. PRIMIM DE LA REACT -> TRIMITEM LA SIMULATOR ---
+# --- THREAD POLLER ---
+def inventory_poller():
+    while True:
+        try:
+            resp = requests.get(INVENTORY_URL, timeout=2) # Timeout mic
+            try:
+                inv_data = resp.json()
+            except:
+                inv_data = {}
+
+            msg = {
+                "type": "data_update",
+                "payload": {
+                    "category": "inventory",
+                    "items": inv_data.get("inventory", [])
+                }
+            }
+            global PENDING_UPDATES
+            PENDING_UPDATES.append(msg)
+        except:
+            pass
+        time.sleep(10)
+
+# --- CHAT ---
 @app.route('/api/chat', methods=['POST'])
 def handle_chat():
     try:
-        # Logam ce am primit de la React
-        data = request.json
-        print(f"\n1️⃣ [Proxy] Primit de la React: {json.dumps(data)}")
+        data = request.json or {}
+        user_message = data.get("message", "")
+        context = data.get("context", {})
 
-        # Trimitem exact acelasi lucru mai departe la Simulator
-        # React trimite: { "message": "Salut", "context": {...} }
-        print(f"2️⃣ [Proxy] Forwarding catre Simulator ({TARGET_URL})...")
+        # Payload acceptat de Simulator ('message' sau 'msg')
+        payload = {
+            "message": user_message, 
+            "msg": user_message,
+            "context": context
+        }
+
+        print(f"1️⃣ [Proxy] Chat -> Simulator ({TARGET_URL})")
         
         try:
-            requests.post(TARGET_URL, json=data, timeout=5)
-        except:
-            print("❌ [Proxy] Simulatorul nu raspunde (5001)!")
+            # --- FIX 2: TIMEOUT (Evita blocarea la infinit) ---
+            requests.post(TARGET_URL, json=payload, timeout=5)
+        except requests.exceptions.Timeout:
+            print("❌ [Proxy] Timeout: Simulatorul nu a răspuns în 5s.")
+            return jsonify({"error": "simulator timeout"}), 504
+        except Exception as e:
+            print(f"❌ [Proxy] Eroare conexiune: {e}")
+            return jsonify({"error": "simulator unreachable"}), 502
 
-        # Returnam OK la React (nu asteptam raspunsul final aici)
-        return jsonify({"status": "sent_to_simulator"})
+        return jsonify({"status": "sent"})
 
     except Exception as e:
-        print(f"❌ Eroare Proxy: {e}")
         return jsonify({"error": str(e)}), 500
 
-
-# --- 2. PRIMIM DE LA SIMULATOR -> SALVAM PENTRU REACT ---
+# --- WEBHOOK ---
 @app.route('/internal/receive', methods=['POST'])
 def receive_internal():
     global PENDING_UPDATES
-    data = request.json
-    
-    print(f"3️⃣ [Proxy] Primit raspuns ASINCRON de la Simulator:")
-    print(f"   📦 {json.dumps(data)}")
-    
-    PENDING_UPDATES.append(data)
-    return jsonify({"status": "queued"})
+    try:
+        data = request.json or {}
+        PENDING_UPDATES.append(data)
+        return jsonify({"status": "queued"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
+@app.route('/from_orchestrator', methods=['POST'])
+def from_orchestrator():
+    return receive_internal()
 
-# --- 3. REACT CERE NOUTATI (POLLING) ---
+# --- POLLING ---
 @app.route('/api/updates', methods=['GET'])
 def get_updates():
     global PENDING_UPDATES
     if PENDING_UPDATES:
-        print(f"4️⃣ [Proxy] Livrez {len(PENDING_UPDATES)} mesaje catre React.")
         to_send = list(PENDING_UPDATES)
         PENDING_UPDATES.clear()
         return jsonify({"updates": to_send})
-    
     return jsonify({"updates": []})
 
+# --- SAVE LEGAL ---
+@app.route('/api/legal/save', methods=['POST'])
+def handle_save_legal():
+    try:
+        data = request.json
+        print("💾 [Proxy] Save Legal -> Simulator...")
+        
+        # --- FIX 3: Timeout si aici ---
+        try:
+            requests.post("http://localhost:5001/legal/save", json=data, timeout=5)
+            return jsonify({"status": "saved"})
+        except requests.exceptions.Timeout:
+            print("❌ [Proxy] Save Timeout!")
+            return jsonify({"error": "timeout"}), 504
+            
+    except Exception as e:
+        print(f"❌ Eroare Save: {e}")
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == '__main__':
-    print(f"🚀 PROXY pornit pe portul {PROXY_PORT}")
+    print(f"🚀 PROXY REPARAT pornit pe {PROXY_PORT}")
+    t = threading.Thread(target=inventory_poller, daemon=True)
+    t.start()
     app.run(port=PROXY_PORT, debug=True, use_reloader=False)
