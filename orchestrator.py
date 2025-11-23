@@ -283,10 +283,35 @@ def send_message(data):
 def legal_recieve():
     data = request.json or {}
     print("Received legal data:", data)
-    # expect something like {"analysis": "...", ...}
-    analysis = data.get("analysis")
-    if analysis:
-        send_chatbox_response_to_proxy(analysis)
+    research = data.get("research", {})
+
+    payload = {
+        "type": "data_update",
+        "payload": {
+            "category": "legal_research",
+            "subject": data.get("subject"),
+            "summary": research.get("summary", ""),
+            "checklist": research.get("checklist", []),
+            "risks": research.get("risks", []),
+            "context": data.get("context", {}),
+            "source_service": "legal"
+        }
+    }
+
+    # forward structured update to proxy
+    try:
+        url = f"{PROXY_BASE_URL}{PROXY_ORCHESTRATOR_ROUTE}"
+        print(f"[orchestrator] Forwarding legal update to proxy: {payload}")
+        resp = requests.post(url, json=payload, timeout=5)
+        print(f"[orchestrator] Proxy responded with status {resp.status_code}")
+    except Exception as e:
+        print(f"[orchestrator] Failed to forward legal update to proxy: {e}")
+
+    # optional chat surface
+    if research.get("summary"):
+        chat_text = f"[Legal] {research.get('summary')}"
+        send_chatbox_response_to_proxy(chat_text)
+
     return jsonify({"status": "received", "data": data}), 200
 
 

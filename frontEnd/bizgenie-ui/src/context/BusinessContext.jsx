@@ -24,6 +24,9 @@ export const BusinessProvider = ({ children }) => {
 	// Inventar
 	const [inventoryItems, setInventoryItems] = useState(MOCK_RESTAURANT_DATA.inventory);
 
+	// Legal tasks (list of tasks/steps/risks)
+	const [legalTasks, setLegalTasks] = useState([]);
+
 	// MESAJE CHAT (ACUM SUNT GLOBALE)
 	const [chatMessages, setChatMessages] = useState([
 		{ id: 1, text: "Salut! Sunt BizGenie. Monitorizez activitatea.", sender: 'ai' }
@@ -71,6 +74,40 @@ export const BusinessProvider = ({ children }) => {
 						if (packet.type === 'data_update' && packet.payload.category === 'inventory') {
 							console.log("📦 [UI] Update Inventar:", packet.payload.items);
 							setInventoryItems(packet.payload.items);
+						}
+
+						// CAZUL 1b: Actualizare Legal (research) -> mapam in legalTasks
+						if (packet.type === 'data_update' && packet.payload.category === 'legal') {
+							setLegalTasks(packet.payload.tasks || []);
+						}
+
+						if (packet.type === 'data_update' && packet.payload.category === 'legal_research') {
+							const rawPayload = packet.payload.data ? packet.payload.data : packet.payload;
+							const entries = Array.isArray(rawPayload) ? rawPayload : [rawPayload];
+							console.log("⚖️ [UI] Research complex primit:", entries.length);
+
+							const mappedTasks = entries.map(raw => ({
+								id: Date.now() + Math.random(),
+								title: raw.subject || "Analiză legală",
+								status: 'pending',
+								description: raw.research?.summary || raw.summary || "",
+								steps: (raw.research?.checklist || raw.checklist || []).map(item => ({
+									step: item.step,
+									action: item.action,
+									citation: item.citation,
+									source: item.source,
+									done: item.done || false
+								})),
+								risks: raw.research?.risks || raw.risks || []
+							}));
+
+							// dacă payload-ul trimite un set explicit (liste), le înlocuim,
+							// altfel le adăugăm la istoric (max 20)
+							if (Array.isArray(rawPayload) && rawPayload.length > 1) {
+								setLegalTasks(mappedTasks.slice(0, 20));
+							} else {
+								setLegalTasks(prev => [...mappedTasks, ...prev].slice(0, 20));
+							}
 						}
 
 						// CAZUL 2: Mesaj Chat
@@ -143,6 +180,30 @@ export const BusinessProvider = ({ children }) => {
 		return await BusinessService.sendMessage(msg, {});
 	};
 
+	// Legal task helpers
+	const toggleLegalStep = (taskId, stepName) => {
+		setLegalTasks(prevTasks => prevTasks.map(task => {
+			if (task.id !== taskId) return task;
+			const updatedSteps = (task.steps || []).map(s => s.step === stepName ? { ...s, done: !s.done } : s);
+			const allDone = updatedSteps.every(s => s.done);
+			const anyDone = updatedSteps.some(s => s.done);
+			const newStatus = allDone ? 'completed' : (anyDone ? 'in_progress' : 'pending');
+			return { ...task, steps: updatedSteps, status: newStatus };
+		}));
+	};
+
+	const deleteLegalTask = (taskId) => setLegalTasks(prev => prev.filter(t => t.id !== taskId));
+
+	const saveLegalChanges = async () => {
+		try {
+			await BusinessService.saveLegalTasks(legalTasks);
+			addChatMessage("Modificări legale salvate.", "system");
+		} catch (e) {
+			console.error("Eroare la salvarea task-urilor legale", e);
+			throw e;
+		}
+	};
+
 
 	// ==========================================
 	// 4. PROVIDER
@@ -156,7 +217,8 @@ export const BusinessProvider = ({ children }) => {
 			isChatOpen, toggleChat,
 			chatMessages, addChatMessage, sendMessage, // <--- IMPORTANTE
 
-			inventoryItems, setInventoryItems
+			inventoryItems, setInventoryItems,
+			legalTasks, setLegalTasks, toggleLegalStep, deleteLegalTask, saveLegalChanges
 		}}>
 			{children}
 		</BusinessContext.Provider>
