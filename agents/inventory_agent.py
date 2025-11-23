@@ -12,7 +12,11 @@ from db.inventory_functions import init_db, add_product, consume_product, get_al
 app = Flask(__name__)
 
 # 🔑 CONFIGURATION
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") 
+site_url = "http://localhost:5000"
+app_name = "InventoryAgent"
+
+# Initialize DB on startup
+init_db()
 
 def query_llm(user_text):
     current_date = datetime.now().strftime("%Y-%m-%d")

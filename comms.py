@@ -4,9 +4,10 @@ import os
 # DEFINING THE PORTS CLEARLY
 SERVICE_URLS = {
     "orchestrator": "http://127.0.0.1:5001",
-    "inventory":    "http://127.0.0.1:5002",
-    "legal":        "http://127.0.0.1:5003",
-    "finance":      "http://127.0.0.1:5004"
+    "legal": "http://127.0.0.1:5002",
+    "predictor": "http://127.0.0.1:5003",
+    "financial": "http://127.0.0.1:5004",
+    "frontend": "http://127.0.0.1:5005",
 }
 
 def send_json_to_service(service_name: str, path: str, payload: dict, timeout: int = 30):
