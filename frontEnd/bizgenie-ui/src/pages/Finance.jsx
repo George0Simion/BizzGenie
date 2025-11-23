@@ -9,7 +9,7 @@ export default function Finance() {
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
             <Wallet className="w-6 h-6 text-emerald-600" />
@@ -17,7 +17,7 @@ export default function Finance() {
           </h1>
           <p className="text-slate-500">Monitorizat de Finance Agent</p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-slate-600 hover:bg-slate-50 font-medium text-sm shadow-sm transition">
+        <button className="w-full sm:w-auto justify-center flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-slate-600 hover:bg-slate-50 font-medium text-sm shadow-sm transition">
           <Download className="w-4 h-4" />
           Export Raport
         </button>

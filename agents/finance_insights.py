@@ -1,9 +1,13 @@
 # /agents/finance_insights.py
 from typing import List, Dict
 import datetime
-# from db.finance_functions import get_daily_profit, get_profit_by_product_delta
-# from db.mockDB import get_daily_profit, get_profit_by_product_delta
+import sys
+import os
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from db.finance_functions import get_daily_profit, get_profit_by_product_delta
+# from db.mockDB import get_daily_profit, get_profit_by_product_delta
 
 def compute_trend(series: List[Dict]) -> Dict:
     """
@@ -124,3 +128,4 @@ def collect_finance_insights(today: datetime.date) -> List[Dict]:
     # - etc.
 
     return insights
+

@@ -35,7 +35,7 @@ The JSON must contain:
     "checklist": [
        {
          "step": short imperative,
-         "action": what to do,
+         "action": what to do be specific,
          "citation": specific law/regulation/article,
          "source": URL to the cited document
        }

@@ -51,7 +51,7 @@ export default function ChatWidget() {
     };
 
     return (
-        <div className="flex flex-col h-full bg-white border-l border-slate-200 w-80 md:w-96 shadow-xl z-20">
+        <div className="fixed inset-x-0 bottom-0 z-40 flex h-[80vh] w-full flex-col rounded-t-2xl bg-white shadow-2xl lg:static lg:h-screen lg:w-96 lg:rounded-none lg:border-l lg:border-slate-200 lg:shadow-xl">
             {/* Header */}
             <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center h-16">
                 <div className="flex items-center gap-3">

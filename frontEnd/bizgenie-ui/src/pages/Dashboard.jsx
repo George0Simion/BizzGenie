@@ -14,12 +14,12 @@ export default function Dashboard() {
     <div className="p-6 max-w-6xl mx-auto space-y-8">
       
       {/* HEADER DINAMIC - Aici folosim numele tău */}
-      <div className="flex justify-between items-end border-b border-slate-200 pb-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between border-b border-slate-200 pb-6">
         <div>
           <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-2">
             {businessData?.name || "Afacerea Ta"} 
           </h1>
-          <div className="flex gap-4 mt-2 text-slate-500 text-sm">
+          <div className="flex flex-wrap gap-3 mt-2 text-slate-500 text-sm">
             <span className="flex items-center gap-1">
               <Building2 className="w-4 h-4" />
               {businessData?.type === 'restaurant' ? 'Restaurant & Horeca' : 'Business General'}

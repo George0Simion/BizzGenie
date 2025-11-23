@@ -7,7 +7,7 @@ export default function Inventory() {
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2 text-slate-800">
             <Package className="text-blue-600" /> 
@@ -23,7 +23,8 @@ export default function Inventory() {
       </div>
 
       <div className="bg-white rounded-xl shadow border border-slate-200 overflow-hidden">
-        <table className="w-full text-left">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[720px] text-left">
           <thead className="bg-slate-50 border-b">
             <tr>
               <th className="p-4 text-slate-500 font-semibold text-xs uppercase">ID</th>
@@ -96,6 +97,7 @@ export default function Inventory() {
             })}
           </tbody>
         </table>
+        </div>
         
         {inventoryItems.length === 0 && (
             <div className="p-8 text-center text-slate-400">

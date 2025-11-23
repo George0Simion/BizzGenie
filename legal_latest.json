@@ -1,59 +1,59 @@
 {
   "service": "legal",
-  "subject": "documentele și informațiile necesare pentru verificarea poliției la un restaurant",
+  "subject": "pașii legali necesari pentru înființarea unui restaurant în România, inclusiv registrul comerțului, autorizații sanitare, fiscale și de funcționare",
   "context": {},
   "research": {
-    "summary": "Pentru verificarea poliției la un restaurant, este obligatorie prezentarea documentelor privind înregistrarea firmei, autorizațiile de funcționare, evidențele angajaților, actele de proveniență ale alimentelor și registrul unic de control, conform prevederilor Legii nr. 12/1990, Legii nr. 333/2003 și Codului muncii [Legea nr. 12/1990, art. 1; Legea nr. 333/2003, art. 30; Codul muncii, art. 8]. Lipsa acestor documente poate atrage sancțiuni contravenționale sau penale.",
+    "summary": "Deschiderea unui restaurant în România necesită înregistrare la Oficiul Național al Registrului Comerțului, obținerea autorizației sanitare de funcționare, înregistrare fiscală, obținerea autorizațiilor de la autoritatea locală și avize PSI [Legea 359/2004, Legea 227/2015, Legea 95/2006, Legea 307/2006]. Respectând acești pași, vă asigurați conformitatea legală a activității, minimizând riscurile de sancțiuni sau suspendare a activității.",
     "checklist": [
       {
-        "step": "Prezintă certificatul de înregistrare al firmei și actul constitutiv",
-        "action": "Demonstrează legalitatea funcționării societății",
-        "citation": "Legea nr. 31/1990, art. 1",
-        "source": "https://legislatie.just.ro/Public/DetaliiDocument/20545"
+        "step": "Înregistrare firmă la Registrul Comerțului",
+        "action": "Depuneți documentele necesare (act constitutiv, dovada sediului, etc.) la ONRC",
+        "citation": "Legea nr. 31/1990, art. 36-37; Legea nr. 359/2004, art. 1-7",
+        "source": "https://legislatie.just.ro/Public/DetaliiDocument/13108"
       },
       {
-        "step": "Prezintă autorizațiile de funcționare și autorizările specifice (DSP, DSVSA, ISU, primărie)",
-        "action": "Dovedește autorizarea activității de restaurant",
-        "citation": "Legea nr. 12/1990, art. 1; OUG nr. 195/2005, art. 13",
-        "source": "https://legislatie.just.ro/Public/DetaliiDocument/1915"
+        "step": "Înregistrare fiscală",
+        "action": "Solicitați certificatul de înregistrare fiscală la ANAF",
+        "citation": "Legea nr. 227/2015, art. 79-82",
+        "source": "https://legislatie.just.ro/Public/DetaliiDocument/171228"
       },
       {
-        "step": "Prezintă registrul unic de control",
-        "action": "Permite înscrierea controlului poliției",
-        "citation": "OG nr. 28/1999, art. 7",
-        "source": "https://legislatie.just.ro/Public/DetaliiDocument/17665"
+        "step": "Obțineți autorizația sanitară de funcționare",
+        "action": "Depuneți documentația la Direcția de Sănătate Publică județeană",
+        "citation": "Legea nr. 95/2006, art. 176-178",
+        "source": "https://legislatie.just.ro/Public/DetaliiDocument/72270"
       },
       {
-        "step": "Prezintă evidența personalului angajat și a contractelor individuale de muncă",
-        "action": "Demonstrează legalitatea angajării personalului",
-        "citation": "Codul muncii, art. 8-10",
-        "source": "https://legislatie.just.ro/Public/DetaliiDocument/24318"
+        "step": "Obțineți autorizația de funcționare de la primărie",
+        "action": "Depuneți documentația solicitată de autoritatea locală",
+        "citation": "Legea nr. 215/2001, art. 36 alin. 6 lit. a",
+        "source": "https://legislatie.just.ro/Public/DetaliiDocument/31313"
       },
       {
-        "step": "Prezintă documentele de proveniență pentru bunuri și produse",
-        "action": "Dovedește legalitatea provenienței mărfurilor",
-        "citation": "Legea nr. 12/1990, art. 1",
-        "source": "https://legislatie.just.ro/Public/DetaliiDocument/1915"
+        "step": "Obțineți avizul de securitate la incendiu (PSI)",
+        "action": "Solicitați aviz/autorizație la Inspectoratul pentru Situații de Urgență",
+        "citation": "Legea nr. 307/2006, art. 29",
+        "source": "https://legislatie.just.ro/Public/DetaliiDocument/74600"
       }
     ],
     "risks": [
       {
-        "risk": "Sancționare contravențională pentru lipsa documentelor de funcționare",
-        "mitigation": "Actualizează și păstrează toate documentele necesare",
-        "citation": "Legea nr. 12/1990, art. 2-3",
-        "source": "https://legislatie.just.ro/Public/DetaliiDocument/1915"
+        "risk": "Funcționarea fără autorizații legale",
+        "mitigation": "Obțineți toate autorizațiile înainte de deschidere",
+        "citation": "Legea nr. 359/2004, art. 28",
+        "source": "https://legislatie.just.ro/Public/DetaliiDocument/56938"
       },
       {
-        "risk": "Amenzi pentru angajarea sau folosirea ilegală de personal",
-        "mitigation": "Asigură evidența completă și corectă a salariaților",
-        "citation": "Codul muncii, art. 260",
-        "source": "https://legislatie.just.ro/Public/DetaliiDocument/24318"
+        "risk": "Sancțiuni pentru nerespectarea normelor de igienă",
+        "mitigation": "Respectați normele sanitare și efectuați controale periodice",
+        "citation": "Legea nr. 95/2006, art. 176-177",
+        "source": "https://legislatie.just.ro/Public/DetaliiDocument/72270"
       },
       {
-        "risk": "Suspiciuni privind proveniența mărfurilor și posibila confiscare a acestora",
-        "mitigation": "Păstrează documente de proveniență la zi pentru toate bunurile",
-        "citation": "Legea nr. 12/1990, art. 6",
-        "source": "https://legislatie.just.ro/Public/DetaliiDocument/1915"
+        "risk": "Amenzi sau închidere pentru neconformitatea cu normele de securitate la incendiu",
+        "mitigation": "Obțineți și mențineți valabilitatea avizului PSI",
+        "citation": "Legea nr. 307/2006, art. 44",
+        "source": "https://legislatie.just.ro/Public/DetaliiDocument/74600"
       }
     ]
   }
