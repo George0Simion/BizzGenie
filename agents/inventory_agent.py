@@ -2,127 +2,221 @@ import os
 import json
 import requests
 from flask import Flask, request, jsonify
-from datetime import datetime
-# Import DB functions from the file above
+from datetime import datetime, timedelta
 import sys
+
+# Ensure database folder is visible
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from db.inventory_functions import init_db, add_product, consume_product, get_alerts
+from db.inventory_functions import init_db, add_product, consume_product, get_alerts, get_all_inventory
 
 app = Flask(__name__)
 
-# 🔑 CONFIGURATION
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-site_url = "http://localhost:5000"
-app_name = "InventoryAgent"
 
-# Initialize DB on startup
-init_db()
+# -------------- COLOR LOGGING HELPERS --------------
+def green(msg): print(f"\033[92m{msg}\033[0m")
+def yellow(msg): print(f"\033[93m{msg}\033[0m")
+def red(msg): print(f"\033[91m{msg}\033[0m")
+def cyan(msg): print(f"\033[96m{msg}\033[0m")
+
+
+# ---------------------------------------------------
+# -------------- LLM QUERY FUNCTION -----------------
+# ---------------------------------------------------
 
 def query_llm(user_text):
-    """
-    Uses LLM to parse natural language into Structured JSON for the DB.
-    """
     current_date = datetime.now().strftime("%Y-%m-%d")
-    
+
+    cyan(f"\n🧠 LLM REQUEST → Processing user message: '{user_text}'")
+
     prompt = f"""
-    You are an Inventory Manager API.
-    Today's date is: {current_date}.
+    You are an Intelligent Inventory System. Today is {current_date}.
+    User Input: "{user_text}"
     
-    User input: "{user_text}"
+    Tasks:
+    1. Identify intent: "add" or "consume".
+    2. Normalize names (e.g. "tomatoes" -> "tomato").
+    3. Return JSON ONLY.
     
-    Extract the following information and return ONLY valid JSON (no markdown):
-    1. action: "add" or "consume" or "query"
-    2. items: a list of objects {{ "name": "string", "quantity": number, "unit": "kg/pcs/l", "expiration_date": "YYYY-MM-DD" (only for add, default to today + 7 days if missing) }}
-    
-    Example JSON output:
+    Output Format:
     {{
-      "action": "add",
+      "action": "add" | "consume",
       "items": [
-        {{ "name": "tomatoes", "quantity": 5, "unit": "kg", "expiration_date": "2024-12-01" }}
+        {{ "normalized_name": "string", "quantity": number, "unit": "unit", 
+           "category": "string", "auto_buy": boolean,
+           "estimated_shelf_life_days": number,
+           "user_specified_date": "optional YYYY-MM-DD" }}
       ]
     }}
     """
 
     headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json"
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Content-Type": "application/json",
     }
-    
+
     data = {
-        "model": "openai/gpt-3.5-turbo", # Or any model available on OpenRouter
+        "model": "openai/gpt-4o-mini",
         "messages": [{"role": "user", "content": prompt}]
     }
 
     try:
-        response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data)
-        response_json = response.json()
-        content = response_json['choices'][0]['message']['content']
-        # Clean up potential markdown code blocks
-        if "```json" in content:
-            content = content.split("```json")[1].split("```")[0]
-        return json.loads(content.strip())
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers=headers, json=data
+        )
+
+        if response.status_code != 200:
+            red(f"❌ LLM API Error: {response.status_code}")
+            red(response.text)
+            return None
+
+        raw_content = response.json()['choices'][0]['message']['content']
+
+        cyan("🔍 RAW LLM RESPONSE:")
+        print(raw_content)
+
+        # Strip markdown fences if present
+        if "```json" in raw_content:
+            raw_content = raw_content.split("```json")[1].split("```")[0]
+
+        parsed = json.loads(raw_content.strip())
+
+        green(f"✅ PARSED LLM JSON: {parsed}")
+        return parsed
+
     except Exception as e:
-        print(f"LLM Error: {e}")
+        red(f"❌ CRITICAL ERROR talking to LLM: {e}")
         return None
+
+
+
+# ---------------------------------------------------
+# -------------- API ROUTES -------------------------
+# ---------------------------------------------------
+
+@app.route('/inventory', methods=['GET'])
+def get_inventory():
+    cyan("\n📦 GET /inventory called")
+    try:
+        inv = get_all_inventory()
+        green(f"Returned {len(inv)} inventory items")
+        return jsonify({"status": "success", "inventory": inv})
+    except Exception as e:
+        red(f"❌ Failed to fetch inventory: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 
 @app.route('/inventory/message', methods=['POST'])
 def handle_message():
-    """
-    Endpoint called by the Orchestrator.
-    Input JSON expected: { "message": "I bought 10 eggs expiring next friday" }
-    """
+    cyan("\n------------------------------------------------------")
+    cyan("📥 POST /inventory/message")
+    cyan("------------------------------------------------------")
+
     data = request.json
-    user_message = data.get('message', '')
+    user_message = data.get("message", "")
 
-    # 1. AI Processing -> Parse Intent
-    parsed_data = query_llm(user_message)
-    
-    if not parsed_data:
-        return jsonify({"error": "Failed to parse message"}), 500
+    yellow(f"User message received: '{user_message}'")
 
-    action = parsed_data.get('action')
-    items = parsed_data.get('items', [])
-    execution_logs = []
+    parsed = query_llm(user_message)
+    if not parsed:
+        red("❌ Could not parse LLM output")
+        return jsonify({"error": "Parsing failed"}), 500
 
-    # 2. Database Execution
+    action = parsed.get("action")
+    items = parsed.get("items", [])
+
+    green(f"\n📝 ACTION = {action}")
+    green(f"📝 ITEMS  = {items}")
+
+    logs = []
+
+    # ---------------------------------------------------
+    # PROCESS EACH ITEM
+    # ---------------------------------------------------
     for item in items:
-        name = item['name'].lower()
-        qty = float(item['quantity'])
-        unit = item.get('unit', 'pcs')
-        
+        name = item["normalized_name"]
+        qty = float(item["quantity"])
+        unit = item.get("unit", "pcs")
+
+        cyan(f"\n🔹 Processing item:")
+        print(f"      Name      = {name}")
+        print(f"      Quantity  = {qty} {unit}")
+        print(f"      Raw item  = {item}")
+
         if action == "add":
-            expiry = item.get('expiration_date')
-            result = add_product(name, qty, unit, expiry)
-            execution_logs.append(result)
-            
+            category = item.get("category", "general")
+            auto_buy = 1 if item.get("auto_buy") else 0
+
+            # Expiration date
+            if item.get("user_specified_date"):
+                expiry = item["user_specified_date"]
+                yellow(f"📅 Using user-specified date: {expiry}")
+            else:
+                days = item.get("estimated_shelf_life_days", 7)
+                expiry = (datetime.now() + timedelta(days=days)).strftime("%Y-%m-%d")
+                yellow(f"📅 Using estimated shelf life: {expiry}")
+
+            cyan("➕ ADDING PRODUCT TO DB:")
+            print(f"       - name={name}")
+            print(f"       - category={category}")
+            print(f"       - qty={qty}")
+            print(f"       - unit={unit}")
+            print(f"       - expiry={expiry}")
+            print(f"       - auto_buy={auto_buy}")
+
+            result = add_product(name, category, qty, unit, expiry, auto_buy)
+            green(f"   ✔ DB Result: {result}")
+            logs.append(result)
+
         elif action == "consume":
+            cyan("➖ CONSUMING PRODUCT FROM DB:")
+            print(f"       - name={name}")
+            print(f"       - qty={qty}")
+
             result = consume_product(name, qty)
-            execution_logs.append(result)
+            green(f"   ✔ DB Result: {result}")
+            logs.append(result)
 
-    # 3. Intelligent Checks (Decision Making)
-    # After the action, we check the health of the inventory
+
+
+    # ---------------------------------------------------
+    # CHECK ALERTS
+    # ---------------------------------------------------
+    cyan("\n🔔 Checking low-stock alerts...")
     alerts = get_alerts()
-    
-    response_text = f"Action Processed: {'; '.join(execution_logs)}."
-    
-    # Append critical alerts to the response
-    if alerts['expired']:
-        response_text += f"\n⚠️ DISCARD: {', '.join(alerts['expired'])}"
-    
-    if alerts['restock_needed']:
-        response_text += f"\n🛒 BUY LIST: {', '.join(alerts['restock_needed'])}"
-    
-    if alerts['expiring_soon']:
-        response_text += f"\n⏳ USE SOON: {', '.join(alerts['expiring_soon'])}"
+    yellow(f"Alerts: {alerts}")
 
-    # Return JSON to Orchestrator
-    return jsonify({
+
+    # ---------------------------------------------------
+    # Assemble Response
+    # ---------------------------------------------------
+    response_text = "; ".join(logs)
+
+    if alerts["restock_needed"]:
+        response_text += "\n🛒 Auto-buy triggered for: " + ", ".join(alerts["restock_needed"])
+        yellow("AUTO BUY NEEDED!")
+
+    final = {
         "agent": "Inventory",
-        "processed_data": parsed_data,
+        "processed_data": parsed,
         "response_text": response_text,
-        "alerts_payload": alerts # Automation agent can use this raw data
-    })
+        "alerts": alerts
+    }
+
+    green("\n📤 FINAL RESPONSE TO ORCHESTRATOR:")
+    print(json.dumps(final, indent=4))
+
+    return jsonify(final)
+
+
+# ---------------------------------------------------
+# SERVER START
+# ---------------------------------------------------
 
 if __name__ == '__main__':
-    print("🍅 Inventory Agent running on port 5002")
+    init_db()
+    cyan("🍅 Inventory Agent running on port 5002")
     app.run(port=5002, debug=True)
