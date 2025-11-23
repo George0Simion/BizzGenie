@@ -1,9 +1,28 @@
 import React from 'react';
 import { useBusiness } from '../context/BusinessContext';
-import { Package, Wifi, AlertTriangle, CheckCircle, RefreshCw, ShoppingCart } from 'lucide-react';
+import { Package, Wifi, AlertTriangle, CheckCircle, RefreshCw, ShoppingCart, Loader2, Server } from 'lucide-react';
 
 export default function Inventory() {
   const { inventoryItems } = useBusiness();
+
+  // --- LOADING STATE ---
+  if (inventoryItems === null) {
+      return (
+        <div className="flex flex-col items-center justify-center h-[80vh] text-center p-6">
+            <div className="relative mb-6">
+                <Server className="w-16 h-16 text-slate-200" />
+                <div className="absolute -bottom-2 -right-2 bg-white rounded-full p-1">
+                    <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+                </div>
+            </div>
+            <h2 className="text-2xl font-bold text-slate-800 mb-2">Se conectează la depozit...</h2>
+            <p className="text-slate-500 max-w-md">
+                Așteptăm datele în timp real de la Inventory Agent. 
+                <br/>Verifică dacă simulatorul este pornit.
+            </p>
+        </div>
+      );
+  }
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -36,14 +55,12 @@ export default function Inventory() {
           </thead>
           <tbody className="divide-y divide-slate-100">
             {inventoryItems.map((item, idx) => {
-              // LOGICA DE STATUS: Calculam daca stocul e critic
               const isLowStock = item.quantity < item.min_threshold;
 
               return (
                 <tr key={idx} className="hover:bg-slate-50 transition-colors">
                   <td className="p-4 text-slate-400 text-xs font-mono">#{item.id}</td>
                   
-                  {/* Nume si Categorie */}
                   <td className="p-4">
                     <div className="font-bold text-slate-800 capitalize">{item.product_name}</div>
                     <div className="text-xs text-slate-500 bg-slate-100 inline-block px-1.5 py-0.5 rounded capitalize mt-1">
@@ -51,7 +68,6 @@ export default function Inventory() {
                     </div>
                   </td>
                   
-                  {/* Cantitate */}
                   <td className="p-4">
                     <div className={`font-mono font-bold ${isLowStock ? 'text-red-600' : 'text-slate-700'}`}>
                         {item.quantity} {item.unit}
@@ -61,12 +77,10 @@ export default function Inventory() {
                     </div>
                   </td>
 
-                  {/* Expirare */}
                   <td className="p-4 text-sm text-slate-600">
                     {item.expiration_date}
                   </td>
 
-                  {/* Status Vizual */}
                   <td className="p-4">
                     {isLowStock ? (
                        <span className="flex items-center gap-1 text-xs font-bold text-red-600 bg-red-50 px-2 py-1 rounded-full w-fit">
@@ -79,7 +93,6 @@ export default function Inventory() {
                     )}
                   </td>
 
-                  {/* Auto Buy Indicator */}
                   <td className="p-4">
                     {item.auto_buy === 1 ? (
                         <div className="text-blue-600" title="Auto-buy activ">
@@ -98,8 +111,9 @@ export default function Inventory() {
         </table>
         
         {inventoryItems.length === 0 && (
-            <div className="p-8 text-center text-slate-400">
-                Aștept date de la simulator...
+            <div className="p-12 text-center text-slate-400 flex flex-col items-center">
+                <Package className="w-12 h-12 text-slate-200 mb-2" />
+                <p>Inventarul este gol momentan.</p>
             </div>
         )}
       </div>

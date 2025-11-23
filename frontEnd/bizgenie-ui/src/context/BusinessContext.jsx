@@ -12,21 +12,20 @@ export const BusinessProvider = ({ children }) => {
   const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isChatOpen, setIsChatOpen] = useState(true);
-  const [chatMessages, setChatMessages] = useState([{ id: 1, text: "Salut! Sunt BizGenie.", sender: 'ai' }]);
-  const [inventoryItems, setInventoryItems] = useState(MOCK_RESTAURANT_DATA.inventory);
-  const [legalTasks, setLegalTasks] = useState([]);
+  const [chatMessages, setChatMessages] = useState([{ id: 1, text: "Salut! Sunt BizGenie. Aștept conexiunea cu serverele...", sender: 'ai' }]);
+  
+  const [inventoryItems, setInventoryItems] = useState(null);
+  const [legalTasks, setLegalTasks] = useState(null);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const addChatMessage = (text, sender = 'ai') => {
     setChatMessages(prev => [...prev, { id: Date.now() + Math.random(), text, sender }]);
   };
 
-  // INIT
+  // INITIALIZARE
   useEffect(() => {
     if (businessData) {
       setNotifications(MOCK_RESTAURANT_DATA.urgent_actions.map(n => ({...n, read: false, time: 'Acum'})));
-      if (MOCK_RESTAURANT_DATA.legal && MOCK_RESTAURANT_DATA.legal.checklist) {
-          setLegalTasks(MOCK_RESTAURANT_DATA.legal.checklist);
-      }
     }
   }, [businessData]);
 
@@ -34,75 +33,117 @@ export const BusinessProvider = ({ children }) => {
     setUnreadCount(notifications.filter(n => !n.read).length);
   }, [notifications]);
 
-  // POLLING
+  // POLLING SYSTEM
   useEffect(() => {
-    const interval = setInterval(async () => {
+    const checkForUpdates = async () => {
       try {
         const updates = await BusinessService.checkUpdates();
         if (updates && updates.length > 0) {
           updates.forEach(packet => {
-            // 1. INVENTAR
+            
             if (packet.type === 'data_update' && packet.payload.category === 'inventory') {
               setInventoryItems(packet.payload.items);
             }
             
-            // 2. LEGAL STANDARD
             if (packet.type === 'data_update' && packet.payload.category === 'legal') {
                 setLegalTasks(packet.payload.tasks);
             }
 
-            // 3. LEGAL RESEARCH (NOU - FORMAT COMPLEX)
             if (packet.type === 'data_update' && packet.payload.category === 'legal_research') {
-                const raw = packet.payload.data;
-                console.log("⚖️ [UI] Research complex primit:", raw.subject);
+                const raw = packet.payload.data || packet.payload;
+                const dataObj = raw || payload; 
 
-                // Convertim structura complexa intr-un task compatibil cu UI-ul nostru
+                const subject = dataObj.subject || "Research";
+                const summary = dataObj.summary || (dataObj.research && dataObj.research.summary) || "";
+                const checklist = dataObj.checklist || (dataObj.research && dataObj.research.checklist) || [];
+                const risks = dataObj.risks || (dataObj.research && dataObj.research.risks) || [];
+
                 const newTask = {
                     id: Date.now(),
-                    title: raw.subject,
-                    status: 'in_progress',
-                    description: raw.research.summary,
-                    // Mapam pasii pastrand metadatele (action, citation, source)
-                    steps: raw.research.checklist.map(item => ({
+                    title: subject,
+                    status: 'pending',
+                    description: summary,
+                    steps: checklist.map(item => ({
                         step: item.step,
-                        action: item.action,     // Extra info
-                        citation: item.citation, // Extra info
-                        source: item.source,     // Link
+                        action: item.action,
+                        citation: item.citation,
+                        source: item.source,
                         done: item.done || false
                     })),
-                    // Stocam riscurile separat in obiectul task-ului
-                    risks: raw.research.risks
+                    risks: risks
                 };
-                setLegalTasks(prev => [newTask, ...prev]);
+                
+                setLegalTasks(prev => [newTask, ...(prev || [])]);
             }
 
-            // 4. CHAT & NOTIFICARI
             if (packet.type === 'chat_message') addChatMessage(packet.payload.text, 'ai');
+            
             if (packet.type === 'notification') {
                setNotifications(prev => [{
-                  id: Date.now() + Math.random(), title: packet.payload.title, desc: packet.payload.desc,
-                  type: packet.payload.type || 'info', time: 'Acum', read: false, agent: 'System'
+                  id: Date.now() + Math.random(), 
+                  title: packet.payload.title, 
+                  desc: packet.payload.desc,
+                  type: packet.payload.type || 'info', 
+                  time: 'Acum', 
+                  read: false, 
+                  agent: 'System'
                }, ...prev]);
             }
           });
         }
       } catch (e) {}
-    }, 2000);
+    };
+
+    checkForUpdates();
+    const interval = setInterval(checkForUpdates, 2000);
     return () => clearInterval(interval);
   }, []);
 
-  // ACTIONS
-  const startNewBusiness = async (d) => { setIsLoading(true); setTimeout(() => { setBusinessData({name: "New Biz", type: "restaurant"}); setIsLoading(false); }, 1000); };
-  const connectExistingBusiness = async (f) => { setIsLoading(true); setTimeout(() => { setBusinessData({name: f.name, type: "restaurant"}); setIsLoading(false); }, 1000); };
+  // EXPORTS & ACTIUNI
+
+  // --- 1. START NEW BUSINESS (CURĂȚAT & SIMPLU) ---
+  const startNewBusiness = async (description) => {
+    setIsLoading(true);
+    
+    const newBiz = { 
+        name: "Afacerea Mea (Startup)", 
+        type: "startup", 
+        stage: "ideation", 
+        details: description 
+    };
+
+    // 1. Adăugăm mesajul userului în chat exact așa cum l-a scris
+    addChatMessage(description, 'user');
+
+    // 2. Trimitem mesajul la server pentru procesare
+    try {
+        // Nu mai adăugăm niciun text automat gen "Fa un plan..."
+        await BusinessService.sendMessage(description, newBiz);
+    } catch (e) {
+        console.error("Eroare trimitere mesaj start:", e);
+    }
+
+    // 3. Intram în dashboard
+    setTimeout(() => {
+      setBusinessData(newBiz);
+      setIsLoading(false);
+    }, 1000);
+  };
+
+  const connectExistingBusiness = async (f) => { setIsLoading(true); setTimeout(() => { setBusinessData({name: f.name, type: "restaurant", cui: f.cui, stage: "active"}); setIsLoading(false); }, 1000); };
+  
   const toggleNotifications = () => setIsNotificationPanelOpen(prev => !prev);
   const markAsRead = (id) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
   const markAllAsRead = () => setNotifications(prev => prev.map(n => ({ ...n, read: true })));
   const deleteNotification = (id) => setNotifications(prev => prev.filter(n => n.id !== id));
+  
   const toggleChat = () => setIsChatOpen(prev => !prev);
   const sendMessage = async (msg) => await BusinessService.sendMessage(msg, {});
+  const toggleMobileMenu = () => setIsMobileMenuOpen(prev => !prev);
+  const closeMobileMenu = () => setIsMobileMenuOpen(false);
 
-  // LEGAL LOGIC
   const toggleLegalStep = (taskId, stepName) => {
+    if (!legalTasks) return;
     setLegalTasks(prevTasks => prevTasks.map(task => {
       if (task.id !== taskId) return task;
       const updatedSteps = task.steps.map(s => s.step === stepName ? { ...s, done: !s.done } : s);
@@ -112,9 +153,18 @@ export const BusinessProvider = ({ children }) => {
       return { ...task, steps: updatedSteps, status: newStatus };
     }));
   };
-
-  const deleteLegalTask = (taskId) => setLegalTasks(prev => prev.filter(t => t.id !== taskId));
-  const saveLegalChanges = async () => { try { await BusinessService.saveLegalTasks(legalTasks); addChatMessage("Modificări legale salvate.", "system"); } catch(e) { throw e; } };
+  
+  const deleteLegalTask = (taskId) => {
+      if (!legalTasks) return;
+      setLegalTasks(prev => prev.filter(t => t.id !== taskId));
+  };
+  
+  const saveLegalChanges = async () => { 
+      try { 
+          await BusinessService.saveLegalTasks(legalTasks || []); 
+          addChatMessage("Modificări legale salvate.", "system"); 
+      } catch(e) { throw e; } 
+  };
 
   return (
     <BusinessContext.Provider value={{ 
@@ -122,7 +172,8 @@ export const BusinessProvider = ({ children }) => {
       notifications, unreadCount, isNotificationPanelOpen, toggleNotifications, markAsRead, markAllAsRead, deleteNotification,
       isChatOpen, toggleChat, chatMessages, addChatMessage, sendMessage,
       inventoryItems, setInventoryItems,
-      legalTasks, setLegalTasks, toggleLegalStep, deleteLegalTask, saveLegalChanges
+      legalTasks, setLegalTasks, toggleLegalStep, deleteLegalTask, saveLegalChanges,
+      isMobileMenuOpen, toggleMobileMenu, closeMobileMenu
     }}>
       {children}
     </BusinessContext.Provider>

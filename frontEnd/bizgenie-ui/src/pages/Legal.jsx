@@ -1,11 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useBusiness } from '../context/BusinessContext';
-import { Scale, ChevronDown, ChevronUp, CheckCircle, Clock, Loader2, Square, CheckSquare, Save, Trash2, ExternalLink, AlertTriangle, BookOpen } from 'lucide-react';
+import { Scale, ChevronDown, ChevronUp, CheckCircle, Clock, Loader2, Square, CheckSquare, Save, Trash2, ExternalLink, AlertTriangle, BookOpen, Shield } from 'lucide-react';
 
 export default function Legal() {
-  const { legalTasks = [], toggleLegalStep, saveLegalChanges, deleteLegalTask } = useBusiness() || {};
+  const { legalTasks, toggleLegalStep, saveLegalChanges, deleteLegalTask } = useBusiness() || {};
   const [expandedId, setExpandedId] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
+  
+  // --- STARE PENTRU TIMEOUT ---
+  const [isTimeout, setIsTimeout] = useState(false);
+
+  useEffect(() => {
+    // --- SCHIMBARE AICI: 5 SECUNDE ---
+    // Dupa 5 secunde, oprim loading-ul fortat si aratam lista goala daca nu au venit date
+    const timer = setTimeout(() => {
+        setIsTimeout(true);
+    }, 5000);
+
+    // Curatam timerul daca plecam de pe pagina
+    return () => clearTimeout(timer);
+  }, []);
 
   const toggleExpand = (id) => setExpandedId(expandedId === id ? null : id);
 
@@ -26,7 +40,28 @@ export default function Legal() {
     return <Clock className="w-5 h-5 text-slate-400" />;
   };
 
-  if (!Array.isArray(legalTasks)) return <div className="p-10 text-center text-slate-500">Se încarcă...</div>;
+  // --- LOGICA DE AFIȘARE ---
+  // Daca datele sunt NULL si NU a trecut timpul (5s) -> Aratam Loading
+  if (legalTasks === null && !isTimeout) {
+      return (
+        <div className="flex flex-col items-center justify-center h-[80vh] text-center p-6 animate-in fade-in duration-700">
+            <div className="relative mb-6">
+                <Shield className="w-16 h-16 text-slate-200" />
+                <div className="absolute -bottom-2 -right-2 bg-white rounded-full p-1">
+                    <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+                </div>
+            </div>
+            <h2 className="text-2xl font-bold text-slate-800 mb-2">Analizăm conformitatea legală...</h2>
+            <p className="text-slate-500 max-w-md">
+                Legal Agent verifică legislația și documentele necesare.
+            </p>
+        </div>
+      );
+  }
+
+  // Daca datele sunt inca NULL dar a trecut timpul -> Le tratam ca array gol []
+  // Astfel va intra pe ramura care afiseaza "Nu sunt task-uri active"
+  const safeTasks = legalTasks || [];
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -44,7 +79,17 @@ export default function Legal() {
       </div>
 
       <div className="space-y-4">
-        {legalTasks.map((task) => (
+        {/* Mesaj cand lista e goala (sau dupa timeout) */}
+        {safeTasks.length === 0 && (
+            <div className="text-center p-12 bg-white rounded-xl border border-slate-200 text-slate-400 animate-in fade-in zoom-in duration-500">
+                <Scale className="w-12 h-12 mx-auto mb-2 text-slate-200" />
+                <h3 className="text-lg font-bold text-slate-600">Totul este în ordine.</h3>
+                <p>Nu am găsit task-uri active sau serverul încă procesează.</p>
+                <p className="text-xs mt-2 text-blue-400 animate-pulse">Ascultăm în continuare după schimbări...</p>
+            </div>
+        )}
+
+        {safeTasks.map((task) => (
           <div key={task.id} className={`bg-white rounded-xl border transition-all duration-300 overflow-hidden ${expandedId === task.id ? 'border-blue-500 shadow-md' : 'border-slate-200 hover:border-blue-300'}`}>
             
             {/* HEADER */}
@@ -77,7 +122,7 @@ export default function Legal() {
                     {task.description || "Fără descriere."}
                   </div>
 
-                  {/* CHECKLIST (Detailed) */}
+                  {/* CHECKLIST */}
                   <div>
                     <h4 className="font-bold text-slate-800 mb-3 text-sm uppercase tracking-wide">Plan de Acțiune:</h4>
                     <div className="space-y-3">
@@ -93,15 +138,9 @@ export default function Legal() {
                                 {/* Metadata: Citation & Link */}
                                 {(step.citation || step.source) && (
                                     <div className="flex flex-wrap items-center gap-2 mt-2">
-                                        {step.citation && (
-                                            <span className="px-2 py-0.5 bg-slate-200 text-slate-600 text-[10px] font-bold rounded uppercase tracking-wide">
-                                                {step.citation}
-                                            </span>
-                                        )}
+                                        {step.citation && <span className="px-2 py-0.5 bg-slate-200 text-slate-600 text-[10px] font-bold rounded uppercase tracking-wide">{step.citation}</span>}
                                         {step.source && (
-                                            <a href={step.source} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="flex items-center gap-1 text-[10px] text-blue-600 hover:underline font-medium">
-                                                Sursă Oficială <ExternalLink className="w-3 h-3" />
-                                            </a>
+                                            <a href={step.source} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="flex items-center gap-1 text-[10px] text-blue-600 hover:underline font-medium">Sursă Oficială <ExternalLink className="w-3 h-3" /></a>
                                         )}
                                     </div>
                                 )}
@@ -111,12 +150,10 @@ export default function Legal() {
                     </div>
                   </div>
 
-                  {/* RISKS SECTION (Only if exists) */}
+                  {/* RISKS */}
                   {task.risks && task.risks.length > 0 && (
                       <div className="border-t border-slate-100 pt-4">
-                          <h4 className="font-bold text-red-800 mb-3 text-sm uppercase tracking-wide flex items-center gap-2">
-                              <AlertTriangle className="w-4 h-4" /> Riscuri Identificate:
-                          </h4>
+                          <h4 className="font-bold text-red-800 mb-3 text-sm uppercase tracking-wide flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> Riscuri Identificate:</h4>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                               {task.risks.map((risk, i) => (
                                   <div key={i} className="p-3 bg-red-50 border border-red-100 rounded-lg text-xs">
@@ -127,7 +164,6 @@ export default function Legal() {
                           </div>
                       </div>
                   )}
-
                 </div>
               </div>
             )}
